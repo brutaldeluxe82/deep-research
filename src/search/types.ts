@@ -74,31 +74,34 @@ const ENV_KEY_MAP: Record<string, string> = {
 	gemini:      "GEMINI_API_KEY",
 };
 
-/** Ordered list of all known provider names. Used by the wizard. */
+/** Ordered list of all **implemented** provider names. Used by the wizard.
+ *
+ * IMPORTANT: Only add providers that have a corresponding implementation
+ * in ./providers/. Unimplemented providers cause runtime crashes.
+ */
 export const KNOWN_PROVIDERS = [
-	"brave",
-	"exa",
-	"tavily",
-	"firecrawl",
-	"duckduckgo",
-	"serper",
-	"google",
-	"gemini",
-	"synthetic",
+	"brave",       // Best quality, requires BRAVE_API_KEY
+	"exa",         // Neural search, requires EXA_API_KEY
+	"tavily",      // Agent-optimized, requires TAVILY_API_KEY
+	"duckduckgo",  // Zero-config, always available
+	// Unimplemented — add to this list ONLY after creating the provider file:
+	// "firecrawl", // Primarily an extractor; search API is limited
+	// "serper",    // Google results, requires SERPER_API_KEY
+	// "google",    // Google Custom Search, requires GOOGLE_API_KEY
+	// "gemini",    // Gemini grounded search, requires GEMINI_API_KEY
+	// "synthetic", // pi built-in — handled specially, not a registry provider
 ] as const;
 
 export type ProviderName = typeof KNOWN_PROVIDERS[number];
 
-/** Detect which providers are available based on env vars and config. */
+/** Detect which providers are available based on env vars and config.
+ * Note: synthetic is NOT listed here — it's handled at the extension level
+ * via pi's built-in synthetic_web_search tool, not through the registry.
+ */
 export function detectAvailableProviders(configKeys: Record<string, string> = {}): ProviderName[] {
 	const available: ProviderName[] = [];
 
 	for (const name of KNOWN_PROVIDERS) {
-		if (name === "synthetic") {
-			// Synthetic is always available inside pi
-			available.push(name);
-			continue;
-		}
 		if (name === "duckduckgo") {
 			// DuckDuckGo scraping works without an API key
 			available.push(name);

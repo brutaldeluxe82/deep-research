@@ -17,8 +17,7 @@ import { BraveSearchProvider } from "./providers/brave.ts";
 import { ExaSearchProvider, ExaContentExtractor } from "./providers/exa.ts";
 import { DuckDuckGoSearchProvider } from "./providers/duckduckgo.ts";
 import { TavilySearchProvider } from "./providers/tavily.ts";
-import { FirecrawlSearchProvider, FirecrawlContentExtractor } from "./providers/firecrawl.ts";
-import { SyntheticSearchProvider } from "./providers/synthetic.ts";
+import { FirecrawlContentExtractor } from "./providers/firecrawl.ts";
 
 // Content extractors (separate from search, some providers implement both)
 import { NativeContentExtractor } from "./providers/native-extract.ts";
@@ -32,12 +31,14 @@ export function registerProviders(config: DeepResearchConfig): void {
 	const keys = config.apiKeys as Record<string, string>;
 
 	// --- Search providers ---
+	// Note: Firecrawl is NOT registered as a search provider here.
+	// Its /v1/search endpoint is limited; it's primarily an extractor.
+	// Synthetic search is NOT in the registry — it's handled at the
+	// extension level via pi's synthetic_web_search tool.
 	registry.registerSearchProvider(new BraveSearchProvider(resolveApiKey("brave", keys)));
 	registry.registerSearchProvider(new ExaSearchProvider(resolveApiKey("exa", keys)));
 	registry.registerSearchProvider(new TavilySearchProvider(resolveApiKey("tavily", keys)));
-	registry.registerSearchProvider(new FirecrawlSearchProvider(resolveApiKey("firecrawl", keys)));
 	registry.registerSearchProvider(new DuckDuckGoSearchProvider());
-	registry.registerSearchProvider(new SyntheticSearchProvider());
 
 	// --- Content extractors ---
 	registry.registerExtractor(new FirecrawlContentExtractor(resolveApiKey("firecrawl", keys)));

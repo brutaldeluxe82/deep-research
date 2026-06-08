@@ -89,11 +89,9 @@ const DEFAULTS: DeepResearchConfig = {
 	preferredSearchProvider: "auto",
 	searchFallbackChain: [
 		"brave",        // If BRAVE_API_KEY present → best quality
-		"exa",          // If EXA_API_KEY present → neural search, great for research
+		"exa",          // If EXA_API_KEY present → neural search
 		"tavily",       // If TAVILY_API_KEY present → agent-optimized
-		"firecrawl",    // If FIRECRAWL_API_KEY present → good for extraction-heavy
-		"synthetic",    // Always available inside pi
-		"duckduckgo",   // Always available, no key needed — last resort
+		"duckduckgo",   // Always available, no key needed — zero-config fallback
 	],
 	extractFallbackChain: [
 		"firecrawl",    // If FIRECRAWL_API_KEY present → JS rendering, clean markdown

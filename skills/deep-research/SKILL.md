@@ -8,13 +8,18 @@ description: Conduct iterative deep research using multi-provider parallel searc
 Conduct structured, iterative deep research using multi-provider parallel search, goal-directed extraction, and confidence-driven iteration. Outputs beautiful HTML + Markdown reports.
 
 **Available tools:**
-- `deep_search` — ParallelMuse search across Brave / Exa / Tavily / Firecrawl / Synthetic / DuckDuckGo simultaneously
+- `deep_search` — ParallelMuse search across all available providers (Brave / Exa / Tavily + DuckDuckGo fallback)
 - `deep_extract` — Extract clean content from URLs (Firecrawl → Exa → native HTTP)
 - `deep_research` — Start a research run (sets up depth + parameters + strategy)
 - `research_checkpoint` — **MANDATORY** quality gate after each search round
 - `research_extract` — Goal-directed extraction with {rational, evidence, summary} evidence tracking
 - `research_outline` — WebWeaver outline generation before writing
 - `research_report` — Generate final HTML + Markdown report with confidence gauge, evidence chains, source badges
+
+**Search providers** (auto-detected from environment):
+- **With API keys:** Brave, Exa, Tavily — used in parallel for maximum coverage
+- **Without API keys:** DuckDuckGo only (zero-config, limited quality)
+- **Tip:** If no results from `deep_search`, fall back to `synthetic_web_search` tool directly
 
 ## When to Use
 

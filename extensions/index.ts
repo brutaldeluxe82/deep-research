@@ -53,10 +53,15 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 
-		// Status
-		const available = registry.listAvailableSearchProviders();
+		// Status — only count providers that actually return results
+		const searchProviders = registry.listAvailableSearchProviders()
+			.filter(p => p.name !== "synthetic"); // synthetic is a different extension, not ours
 		const extractors = registry.listAvailableExtractors();
-		ctx.ui.setStatus("deep-research", `${available.length} search providers, ${extractors.length} extractors`);
+		const hasKeys = searchProviders.some(p => p.name !== "duckduckgo");
+		ctx.ui.setStatus("deep-research", hasKeys
+			? `${searchProviders.length} search providers, ${extractors.length} extractors`
+			: `${searchProviders.length} search provider (DuckDuckGo only — add API keys for better results)`,
+		);
 	});
 
 	pi.on("session_shutdown", () => {
@@ -68,20 +73,20 @@ export default function (pi: ExtensionAPI) {
 	// Tool: deep_search — ParallelMuse multi-provider search
 	// ══════════════════════════════════════════════════════════════════════════
 
-	pi.registerTool({
+		pi.registerTool({
 		name: "deep_search",
 		label: "Deep Search",
 		description: [
-			"Search the web using ALL available providers in parallel (ParallelMuse pattern).",
-			"Fans out queries across Brave, Exa, Tavily, Firecrawl, Synthetic, DuckDuckGo simultaneously.",
+			"Search the web using available providers in parallel (ParallelMuse pattern).",
+			"With API keys: fans out across Brave, Exa, Tavily simultaneously for maximum coverage.",
+			"Without API keys: uses DuckDuckGo as zero-config fallback, or fall back to synthetic_web_search.",
 			"Results are deduplicated and merged — much higher source coverage than single-provider search.",
-			"Returns ranked results with title, URL, snippet, source provider, and credibility tier.",
-			"Pass multiple queries to fan out broadly across the topic.",
+			"Pass comma-separated queries to fan out broadly across the topic.",
 		].join(" "),
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query (or comma-separated for multi-query fan-out)" }),
 			max_results: Type.Optional(Type.Number({ description: "Max total results across all providers (default: 10, max: 20)", default: 10, maximum: 20 })),
-			engine: Type.Optional(Type.String({ description: "Override engine: auto | brave | exa | tavily | firecrawl | duckduckgo | synthetic" })),
+			engine: Type.Optional(Type.String({ description: "Override engine: auto | brave | exa | tavily | duckduckgo" }),
 			parallel: Type.Optional(Type.Boolean({ description: "Search multiple providers in parallel (default: true)", default: true })),
 		}) as never,
 
@@ -110,9 +115,8 @@ export default function (pi: ExtensionAPI) {
 				);
 
 				if (results.length === 0) {
-					const triedStr = tried.length > 0 ? ` Tried: ${tried.join(", ")}` : "";
 					return {
-						content: [{ type: "text" as const, text: `No results found for "${queries[0]}".${triedStr}` }],
+						content: [{ type: "text" as const, text: `No results found for "${queries[0]}" via ${tried.join(", ")}.\n\nTip: Use \`synthetic_web_search\` for basic results, or set BRAVE_API_KEY for better coverage.` }],
 						details: {},
 					};
 				}
@@ -132,8 +136,20 @@ export default function (pi: ExtensionAPI) {
 			const { results, providers } = await engine.parallelSearch(queries, maxResults);
 
 			if (results.length === 0) {
+				const availableProviders = registry.listAvailableSearchProviders().map(p => p.name);
+				const hasPaidKeys = availableProviders.some(p => p !== "duckduckgo");
+
+				let helpText = `No results found for "${rawQuery}".`;
+				if (!hasPaidKeys) {
+					helpText += `\n\n**No search API keys configured.** Deep research works best with API keys.\n`;
+					helpText += `To set up (takes 2 minutes):\n`;
+					helpText += `1. Get a FREE Brave Search API key: https://api.search.brave.com/app/api-keys\n`;
+					helpText += `2. Add to your shell: export BRAVE_API_KEY=your_key\n`;
+					helpText += `3. Restart this session\n\n`;
+					helpText += `Alternative: use the \`synthetic_web_search\` tool directly for basic results.`;
+				}
 				return {
-					content: [{ type: "text" as const, text: `No results found for "${rawQuery}" across ${providers.length} providers.` }],
+					content: [{ type: "text" as const, text: helpText }],
 					details: {},
 				};
 			}
