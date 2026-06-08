@@ -1,5 +1,5 @@
 {
-  "name": "deep-research",
+  "name": "pi-deep-research",
   "version": "0.2.0",
   "description": "Iterative deep research for pi — ParallelMuse multi-provider search, goal-directed extraction, WebWeaver reports, HTML+Markdown output",
   "type": "module",

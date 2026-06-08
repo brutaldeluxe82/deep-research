@@ -1,6 +1,6 @@
 # deep-research — Project State
 
-**Package:** `deep-research` v0.2.0 · **Status:** Active Development · **Repo:** [github.com/brutaldeluxe82/deep-research](https://github.com/brutaldeluxe82/deep-research)
+**Package:** `deep-research` v0.2.0 · **Status:** Active Development · **Repo:** [github.com/brutaldeluxe82/pi-deep-research](https://github.com/brutaldeluxe82/pi-deep-research)
 
 ---
 
@@ -112,7 +112,7 @@ A self-contained pi (coding agent) package that implements iterative deep resear
 - [x] First-run setup wizard
 - [x] SKILL.md with full 3-phase workflow
 - [x] RFC.md documenting decisions
-- [x] GitHub repo: brutaldeluxe82/deep-research
+- [x] GitHub repo: brutaldeluxe82/pi-deep-research
 - [x] Config checked into chezmoi
 
 ### 🔄 In Progress
