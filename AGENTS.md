@@ -9,8 +9,8 @@ Guidance for AI agents (and humans) working on this codebase.
 A [pi](https://github.com/earendil-works/pi-coding-agent) package called `pi-deep-research` that implements iterative deep research as a pi skill + extension. Inspired by Alibaba's DeepResearch/Odysseus.
 
 **Core techniques:**
-- **ParallelMuse** — fan-out search across all available providers simultaneously, converge + deduplicate
-- **WebWeaver** — outline-then-write structured report generation
+- **Multi-provider parallel search** — fan-out across all available providers simultaneously, converge + deduplicate
+- **Structured outline generation** — outline-then-write for report structure
 - **Goal-directed extraction** — LLM-driven extraction with `{rational, evidence, summary}` evidence threading
 
 **Current version:** 0.3.0 · **License:** MIT · **Repo:** [brutaldeluxe82/pi-deep-research](https://github.com/brutaldeluxe82/pi-deep-research)
@@ -22,7 +22,7 @@ A [pi](https://github.com/earendil-works/pi-coding-agent) package called `pi-dee
 ```
 index.ts                          ← Re-exports extensions/index.ts
 extensions/
-  index.ts                        ← Main extension: registers 9 tools + lifecycle hooks
+  index.ts                        ← Main extension: registers 5 tools + lifecycle hooks
 skills/
   deep-research/SKILL.md         ← LLM-facing skill instructions (YAML frontmatter required)
 src/
@@ -36,28 +36,13 @@ src/
       brave.ts                    ← Brave Search API (BRAVE_API_KEY)
       exa.ts                      ← Exa neural search + content extraction (EXA_API_KEY)
       tavily.ts                   ← Tavily agent search (TAVILY_API_KEY)
-      duckduckgo.ts              ← Zero-config HTML scraping (main + Lite fallback)
-      firecrawl.ts               ← Content extraction only (FIRECRAWL_API_KEY)
-      native-extract.ts          ← Zero-config: fetch + HTML stripping
-  research/
-    engine.ts                       ← ResearchEngine, ProviderHealth, SubQuestion/Evidence tracking
-    strategies.ts                    ← 5 research strategy templates (comparison, factcheck, deep_dive, exploratory, temporal)
-    compressor.ts                   ← ReasoningCompressor — ParallelMuse branch compression + synthesis
-  search/
-    types.ts                      ← SearchProvider + ContentExtractor interfaces, KNOWN_PROVIDERS
-    registry.ts                   ← ProviderRegistry singleton with fallback chains
-    index.ts                      ← Wires providers to registry on session_start
-    providers/
-      brave.ts                    ← Brave Search API (BRAVE_API_KEY)
-      exa.ts                      ← Exa neural search + content extraction (EXA_API_KEY)
-      tavily.ts                   ← Tavily agent search (TAVILY_API_KEY)
       scholar.ts                  ← Semantic Scholar academic search (FREE, zero-config)
       duckduckgo.ts              ← Zero-config HTML scraping (main + Lite fallback)
       firecrawl.ts               ← Content extraction only (FIRECRAWL_API_KEY)
       native-extract.ts          ← Zero-config: fetch + HTML stripping
-  tools/
-    code-executor.ts              ← Sandboxed Node.js code execution (config-gated, off by default)
-    file-parser.ts                ← File content extraction (text, CSV, JSON, PDF, code files)
+  research/
+    engine.ts                     ← ResearchEngine, ProviderHealth, SubQuestion/Evidence tracking
+    strategies.ts                 ← 5 research strategy templates (comparison, factcheck, deep_dive, exploratory, temporal)
   report/
     html.ts                       ← HTML + Markdown report generator
 ```
@@ -66,17 +51,15 @@ src/
 
 ## Key Principles
 
-### RFC-2: Zero-Assumption, Vendorized Providers
+### Zero-Assumption, Vendorized Providers
 
 > **pi ships with zero search providers.** We make no assumptions about what search tools are installed.
-
-This means:
 - `synthetic_web_search` is a **separate extension** (`pi-synthetic`), NOT callable from our TypeScript code
 - We can only **suggest** external tools as fallback hints in error messages
 - Every provider we ship is a **vendorized** self-contained Node.js HTTP client using only `node:fetch`
 - Adding a new provider: implement `SearchProvider` interface → add to `KNOWN_PROVIDERS` → register in `src/search/index.ts`. That's it.
 
-### Provider Contract (RFC-2 §5)
+### Provider Contract
 
 Every provider must:
 - Use only `node:fetch` — no npm deps for HTTP
@@ -150,22 +133,15 @@ Config is managed by chezmoi: `~/.local/share/chezmoi/dot_config/private_pi/deep
 
 ---
 
-## The 12 Tools
+## The 5 Tools
 
 | Tool | Purpose | Key Parameters |
 |------|---------|---------------|
-| `deep_search` | ParallelMuse parallel search | `query`, `max_results`, `engine`, `parallel`, `compress` |
-| `deep_extract` | Content extraction from URL | `url`, `max_tokens` |
-| `deep_research` | Initialize a research run | `query`, `depth` (quick/standard/deep), `strategy` |
+| `deep_search` | Multi-provider parallel search | `query`, `max_results`, `engine`, `parallel` |
+| `deep_extract` | Content extraction + evidence tracking | `url`, `goal`, `claim`, `sub_question_id`, `max_tokens` |
 | `research_checkpoint` | Quality gate after each round | `depth`, `round`, `sub_questions_*`, `confidence`, `gaps` |
-| `research_extract` | Goal-directed extraction + evidence | `url`, `goal`, `sub_question_id` |
-| `research_outline` | WebWeaver outline generation | `query`, `sub_questions` |
+| `research_outline` | Structured outline generation | `query`, `sub_questions` |
 | `research_report` | HTML + Markdown report output | `query`, `depth`, `sources_*` |
-| `research_setup` | Check/fix search config | (none) |
-| `deep_research_doctor` | Smoke test diagnostics | (none) |
-| `research_scholar` | Academic paper search | `query`, `max_results`, `year_from`, `year_to`, `fields_of_study` |
-| `research_code` | Sandboxed JS code execution | `code`, `timeout_ms` |
-| `research_file` | Local file text extraction | `file_path`, `max_tokens` |
 
 ---
 
@@ -307,18 +283,7 @@ There are no automated tests yet. Manual testing:
 2. Restart pi session — wizard runs on first login
 3. Test with `deep_search("test query")` — should use Brave/Exa/Tavily in parallel
 4. Test zero-config by unsetting API keys — should get DDG fallback + actionable error
-5. Run `deep_research_doctor` for smoke test diagnostics
-
----
-
-## Key Documents
-
-| Doc | Purpose |
-|-----|---------|
-| `RFC.md` | Original RFC: inspirations, design choices, rejected alternatives |
-| `RFC-2-SEARCH-PROVIDERS.md` | Search provider model: zero-assumption, vendorized, error handling policy |
-| `UX_AUDIT.md` | UX audit findings with severity ratings and fix status |
-| `PROJECT_STATE.md` | Living project tracker: architecture, shipped/planned features, test history |
+5. Run diagnostics by checking provider registry manually
 
 ---
 
@@ -328,7 +293,6 @@ There are no automated tests yet. Manual testing:
 - `fix:` bug fixes
 - `docs:` documentation changes
 - `refactor:` code restructure without behavior change
-- Reference RFC sections in commit bodies where relevant
 
 ---
 

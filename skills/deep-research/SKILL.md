@@ -1,57 +1,23 @@
 ---
 name: deep-research
-description: Conduct iterative deep research using multi-provider parallel search (ParallelMuse), goal-directed extraction with evidence threading, WebWeaver outline-then-write, confidence-gated checkpoints, and beautiful HTML+Markdown report generation. Use when the user asks to research, investigate, deep dive, or find out about a topic that requires multiple sources and synthesis. Triggers on research X, deep dive into X, investigate X, find out about X, what is the best X, compare X vs Y, or any complex question a single search cannot fully answer.
+description: Conduct iterative deep research using multi-provider parallel search, goal-directed extraction, confidence-gated checkpoints, and HTML+Markdown report generation. Use when the user asks to research, investigate, deep dive, or find out about a topic that requires multiple sources and synthesis. Triggers on research X, deep dive into X, investigate X, find out about X, what is the best X, compare X vs Y, or any complex question a single search cannot fully answer.
 ---
 
 # Deep Research
 
-Conduct structured, iterative deep research using multi-provider parallel search, goal-directed extraction, and confidence-driven iteration. Outputs beautiful HTML + Markdown reports.
+Conduct structured, iterative deep research using multi-provider parallel search, goal-directed extraction, and confidence-driven iteration. Outputs HTML + Markdown reports.
 
-**Available tools:**
-- `deep_search` — ParallelMuse search across all available providers (Brave / Exa / Tavily / Scholar + DuckDuckGo fallback)
-- `deep_extract` — Extract clean content from URLs (Firecrawl → Exa → native HTTP)
-- `deep_research` — Start a research run (sets up depth + parameters + strategy)
+**5 tools:**
+- `deep_search` — Parallel search across all available providers (Brave / Exa / Tavily + DuckDuckGo fallback)
+- `deep_extract` — Extract content from URLs, with optional evidence tracking (pass `goal`/`claim` params)
 - `research_checkpoint` — **MANDATORY** quality gate after each search round
-- `research_extract` — Goal-directed extraction with {rational, evidence, summary} evidence tracking
-- `research_outline` — WebWeaver outline generation before writing
-- `research_report` — Generate final HTML + Markdown report with confidence gauge, evidence chains, source badges
-- `research_setup` — Check/fix search configuration (API keys, providers)
-- `deep_research_doctor` — Run diagnostics (smoke test search, health check providers)
-- `research_scholar` — Search academic papers via Semantic Scholar (free, no API key needed)
-- `research_code` — Execute JavaScript code in a sandboxed environment (must be enabled in config)
-- `research_file` — Extract text content from local files (text, CSV, JSON, PDF, code)
+- `research_outline` — Structured outline generation before writing
+- `research_report` — Generate final HTML + Markdown report with confidence gauge, source badges
 
 **Search providers** (auto-detected from environment):
 - **With API keys:** Brave, Exa, Tavily — used in parallel for maximum coverage
 - **Without API keys:** DuckDuckGo only (zero-config, limited quality)
-- **Always available:** Semantic Scholar (free academic search — no key needed)
 - **Tip:** If no results from `deep_search`, fall back to `synthetic_web_search` tool directly
-
-## Research Strategy Templates
-
-The `deep_research` tool auto-detects a research strategy based on the query type. You can also specify `strategy` explicitly to override auto-detection.
-
-| Strategy | Query Type | Evidence Threshold | Approach |
-|----------|-----------|-------------------|----------|
-| `comparison` | "X vs Y" | 3 per option | Search each option separately, then direct comparisons |
-| `factcheck` | "is X true" | 2 supporting + 2 contradicting | Search claim, debunking, academic sources |
-| `deep_dive` | "explain X" | 5 | Overview → technical → edge cases |
-| `exploratory` | open-ended | 3 per sub-question | Broad → narrow funnel |
-| `temporal` | "latest X" or "history of X" | 2 per time period | Chronological, recency filters |
-
-**Auto-detection rules:**
-- `comparison`: Query contains vs, versus, compare, better, best
-- `factcheck`: Query asks if something is true/false, mentions myths, debunking
-- `deep_dive`: Query starts with "what is", "define", "explain"
-- `temporal`: Query mentions latest, recent, history, timeline, or years (2024-2026)
-- `exploratory`: Default for all other queries
-
-Example:
-```
-deep_research(query="React vs Vue performance", strategy="comparison")
-deep_research(query="Is AI conscious?", strategy="factcheck")
-deep_research(query="latest LLM benchmarks")  // auto-detected as temporal
-```
 
 ## When to Use
 
@@ -68,22 +34,18 @@ deep_research(query="latest LLM benchmarks")  // auto-detected as temporal
 | standard | 6 | 40 | 5 | 8min | Most research (default) |
 | deep | 10 | 60 | 6 | 20min | Complex multi-faceted topics |
 
-**Goal: match or exceed Gemini Deep Research's ~60 source coverage on deep runs.**
-
 ## Workflow
 
 ### Phase 1 — Understand & Plan
 
-Call `deep_research` to initialize, then decompose the question into **4-8 sub-questions** (more than before — we need broad coverage to hit 40-60 sources).
-
-For each sub-question, identify:
+Decompose the question into **4-8 sub-questions.** For each sub-question, identify:
 1. What specific data points, facts, or perspectives should we look for?
 2. What type of sources would be most credible? (academic, industry, primary, government)
 3. What search query variations would surface different angles?
 
-### Phase 2 — Search & Gather (ParallelMuse Iterative Loop)
+### Phase 2 — Search & Gather (Iterative Loop)
 
-**The core principle: FAN OUT, not deep dive.** Each round should cast a wide net.
+**The core principle: cast a wide net each round.**
 
 ```
 ┌─→ For EACH sub-question:                                  ─┐
@@ -95,9 +57,9 @@ For each sub-question, identify:
 │     → Returns merged results with provider tags              │
 │       ↓                                                     │
 │   For top 6-10 results:                                     │
-│     research_extract(url, goal="...", claim="...")          │
-│     → Goal-directed extraction                              │
-│     → Track evidence: claim → evidence → source             │
+│     deep_extract(url, goal="...", claim="...")              │
+│     → Extracts content from URL                             │
+│     → Tracks evidence: claim → evidence → source            │
 │     → Note {rational, evidence, summary} for each finding   │
 │       ↓                                                     │
 │   Self-reflect: what's still missing?                       │
@@ -120,7 +82,7 @@ For each sub-question, identify:
 3. **Be honest about confidence** — 1 weak source = 20-30%, not 70%
 4. **Aim for the source target** — keep going until you have 15/40/60 sources
 
-**Search strategy — the ParallelMuse approach:**
+**Search strategy:**
 
 - `deep_search` with `parallel=true` fans out across ALL available providers simultaneously
 - This is how we hit high source counts: 3 providers × 5 queries × 10 results = 150 raw → ~40-60 unique after dedup
@@ -137,11 +99,11 @@ For each sub-question, identify:
 - Academic: `"arxiv autonomous software engineering agent architecture 2026"`
 - Evidence-seeking: `"what is the best approach to building AI coding agents"`
 
-**Extraction strategy — the goal-directed pattern:**
+**Extraction strategy:**
 
-Use `research_extract` (not raw `deep_extract`) for structured research:
-- Pass the `goal` parameter: what specific information you're seeking
-- Pass the `claim` parameter: what claim this evidence will support
+Use `deep_extract` with the optional `goal` and `claim` params for structured research:
+- Pass `goal`: what specific information you're seeking from this page
+- Pass `claim`: what claim this evidence will support
 - After reading, note: **rational** (why relevant), **evidence** (specific fact), **summary** (one sentence)
 - This creates the evidence chain for the report
 
@@ -152,17 +114,17 @@ Use `research_extract` (not raw `deep_extract`) for structured research:
 - 3+ sources converge → 85-95%
 - Sources contradict → cap at 50% until resolved
 
-### Phase 3 — WebWeaver: Outline, Then Write
+### Phase 3 — Outline, Then Write
 
 **Only enter this phase after receiving a 🟢 PROCEED verdict.**
 
 1. Call `research_outline` with:
    - Title, sub-questions, key findings, contradictions
-   - This generates a structured outline mapping sections → sub-questions → sources
+   - Generates a structured outline mapping sections → sub-questions → sources
 
 2. Write each section according to the outline, following these writing principles:
 
-**Writing principles — this is where quality lives:**
+**Writing principles:**
 
 1. **Synthesize, don't summarize.** "X is true because A, B, C converge" — not "Source A says X."
 2. **Build evidence chains.** Every major claim → supporting evidence → source.
@@ -173,7 +135,7 @@ Use `research_extract` (not raw `deep_extract`) for structured research:
 
 3. Call `research_report` to generate the final output:
    - Pass all structured data: title, sections, sources, contradictions, confidence
-   - This generates BOTH an HTML file (with dark/light mode, confidence gauge, etc.) AND a Markdown file
+   - Generates BOTH an HTML file and a Markdown file
    - Returns file paths for both
 
 **HTML report features:**
@@ -196,12 +158,9 @@ After generating the report:
 ## Quick Reference
 
 ```
-deep_research(query="...", depth="standard")     → Initialize + plan
-deep_search(query="...", parallel=true, max_results=10)  → ParallelMuse search
-#     compress=true (default) → compress each provider branch, then synthesize (saves 10-30% tokens)
-#     compress=false → return raw merged results (full detail)
-research_extract(url="...", goal="...", claim="...")      → Goal-directed extraction
-research_checkpoint(depth, round, ..., confidence, gaps)  → Quality gate
-research_outline(title, sub_questions, key_findings)      → WebWeaver outline
-research_report(title, sections, sources, confidence)     → HTML + MD output
+deep_search(query="...", parallel=true, max_results=10)     → Multi-provider search
+deep_extract(url="...", goal="...", claim="...")            → Extract + evidence tracking
+research_checkpoint(depth, round, ..., confidence, gaps)    → Quality gate
+research_outline(title, sub_questions, key_findings)        → Structured outline
+research_report(title, sections, sources, confidence)        → HTML + MD output
 ```

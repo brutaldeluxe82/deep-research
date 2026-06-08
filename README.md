@@ -1,13 +1,13 @@
 # deep-research
 
-Iterative deep research for pi — ParallelMuse multi-provider search, goal-directed extraction, WebWeaver reports, HTML + Markdown output.
+Iterative deep research for pi — multi-provider parallel search, goal-directed extraction, structured reports with HTML + Markdown output.
 
 ## Features
 
-### 🔍 ParallelMuse Search
-Fan out queries across ALL available search providers simultaneously. Results are deduplicated and merged — dramatically higher source coverage than single-provider search.
+### 🔍 Multi-Provider Parallel Search
+Fan out queries across ALL available search providers simultaneously. Results are deduplicated by URL — dramatically higher source coverage than single-provider search.
 
-**6 search adapters** with auto-fallback:
+**5 search adapters** with auto-fallback:
 | Provider | API Key | Type |
 |----------|---------|------|
 | Brave | `BRAVE_API_KEY` | Web search |
@@ -15,12 +15,11 @@ Fan out queries across ALL available search providers simultaneously. Results ar
 | Tavily | `TAVILY_API_KEY` | Agent-optimized search |
 | Firecrawl | `FIRECRAWL_API_KEY` | JS-rendered extraction |
 | DuckDuckGo | (none) | Zero-config scraping |
-| Synthetic | (built-in) | pi's native search |
 
 ### 🎯 Goal-Directed Extraction
-Extract content from URLs with a **research goal** — track evidence chains from claim → evidence → source. Models the Alibaba DeepResearch `{rational, evidence, summary}` pattern.
+Extract content from URLs with an optional **research goal** — track evidence chains from claim → evidence → source. Pass `goal` and `claim` params to `deep_extract`.
 
-### 📝 WebWeaver Reports
+### 📝 Structured Reports
 Outline-then-write structured report generation. Create an outline mapping sections to sub-questions, then write each section independently for coherent, evidence-backed reports.
 
 ### 📊 HTML Report Output
@@ -36,18 +35,16 @@ Beautiful, self-contained HTML reports with:
 - 📱 Responsive/mobile-friendly
 
 ### 📈 60+ Source Coverage
-Deep research targets 60 sources (matching Gemini Deep Research), using multi-query, multi-provider parallel search with source deduplication and cross-referencing.
+Deep research targets 60 sources, using multi-query, multi-provider parallel search with URL deduplication.
 
 ## Tools
 
 | Tool | Description |
 |------|-------------|
-| `deep_search` | ParallelMuse search across multiple providers |
-| `deep_extract` | Content extraction from URLs |
-| `deep_research` | Initialize research pipeline with plan |
+| `deep_search` | Parallel search across multiple providers |
+| `deep_extract` | Content extraction from URLs (with optional evidence tracking) |
 | `research_checkpoint` | Quality gate between rounds (mandatory) |
-| `research_extract` | Goal-directed extraction with evidence tracking |
-| `research_outline` | WebWeaver outline generation |
+| `research_outline` | Structured outline generation |
 | `research_report` | Generate final HTML + Markdown report |
 
 ## Research Depths
@@ -70,11 +67,11 @@ Config file: `$PI_CODING_AGENT_DIR/deep-research.json`
 
 Default: `~/.config/pi/deep-research.json` (respects `PI_CODING_AGENT_DIR` and XDG fallback)
 
-API keys are auto-detected from environment variables. Zero-config works with DuckDuckGo + Synthetic search.
+API keys are auto-detected from environment variables. Zero-config works with DuckDuckGo fallback.
 
 ### First-Run Wizard
 
-On first use, an interactive wizard helps you pick your preferred search provider.
+On first use, an interactive wizard shows detected API keys and signup URLs.
 
 ## Usage
 
@@ -93,7 +90,9 @@ src/
 ├── config.ts           # Config loader with PI_CODING_AGENT_DIR support
 ├── setup-wizard.ts     # First-run provider picker
 ├── research/
-│   └── engine.ts       # Research engine (ParallelMuse, evidence tracking, WebWeaver)
+│   ├── engine.ts       # Research engine (parallel search, evidence tracking, outlines)
+│   ├── strategies.ts   # Research strategy templates
+│   └── strategies.ts  # Research strategy templates
 ├── report/
 │   └── html.ts         # HTML report generator with dark/light mode
 └── search/
@@ -104,9 +103,9 @@ src/
         ├── brave.ts    # Brave Search API
         ├── exa.ts      # Exa neural search + extraction
         ├── tavily.ts   # Tavily agent-optimized search
+        ├── scholar.ts  # Semantic Scholar academic search (free)
         ├── firecrawl.ts # Firecrawl JS-rendered extraction
         ├── duckduckgo.ts # DuckDuckGo zero-config scraping
-        ├── synthetic.ts  # pi built-in synthetic_web_search
         └── native-extract.ts # Native HTTP + HTML stripping
 ```
 

@@ -1,5 +1,5 @@
 /**
- * First-run setup wizard (RFC-2 §4).
+ * First-run setup wizard.
  *
  * On first run, detects API keys from environment and shows the user:
  * 1. Which keys were found (transparency)

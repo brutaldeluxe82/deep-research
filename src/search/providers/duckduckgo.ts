@@ -8,7 +8,7 @@
  * This is the ONLY provider that works without an API key.
  * Quality is lower than Brave/Exa but it needs zero setup.
  *
- * Contract (RFC-2 §5):
+ * 
  * - Uses only node:fetch (no external deps)
  * - isAvailable() returns true (no key needed)
  * - search() catches all errors and returns [] (never throws)
@@ -16,7 +16,7 @@
  * - Timeout: 12s
  * - No state between calls (no cookies, no session)
  *
- * DuckDuckGo exception (RFC-2 §5): isAvailable()=true even though
+ * DuckDuckGo exception: isAvailable()=true even though
  * results may be empty (rate-limited, blocked). This is acceptable
  * because it CAN return results, unlike phantom providers that NEVER can.
  */

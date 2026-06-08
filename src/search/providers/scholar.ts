@@ -5,7 +5,7 @@
  * FREE, zero-config API. No key required for basic usage.
  * An optional SEMANTIC_SCHOLAR_API_KEY enables higher rate limits.
  *
- * Contract (RFC-2 §5):
+ * 
  * - Uses only node:fetch (no external deps)
  * - isAvailable() is honest: true by default (free API)
  * - search() catches all errors and returns [] (never throws)

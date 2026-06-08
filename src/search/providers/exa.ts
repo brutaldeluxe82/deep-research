@@ -9,7 +9,7 @@
  * Neural search is Exa's differentiator — it finds conceptually
  * relevant results, not just keyword matches.
  *
- * Contract (RFC-2 §5):
+ * 
  * - Uses only node:fetch (no external deps)
  * - isAvailable() is honest: true only if API key is present
  * - search() catches all errors and returns [] (never throws)

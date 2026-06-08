@@ -5,7 +5,7 @@
  * Env: BRAVE_API_KEY
  * Config: apiKeys.brave
  *
- * Contract (RFC-2 §5):
+ * 
  * - Uses only node:fetch (no external deps)
  * - isAvailable() is honest: true only if API key is present
  * - search() catches all errors and returns [] (never throws)

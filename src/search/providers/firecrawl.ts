@@ -9,12 +9,12 @@
  * handles pagination, and returns clean markdown. Ideal for
  * the "visit and extract" step of deep research.
  *
- * RFC-2 decision: Firecrawl is extraction-only. Its /v1/search
+ * Design decision: Firecrawl is extraction-only. Its /v1/search
  * endpoint is limited compared to Brave/Exa/Tavily. Using it as
  * a search provider wasted a parallel fan-out slot. The search
- * class is kept in case we re-evaluate (RFC-2 §6.6).
+ * class is kept in case we re-evaluate .
  *
- * Contract (RFC-2 §5):
+ * 
  * - Uses only node:fetch (no external deps)
  * - isAvailable() is honest: true only if API key is present
  * - extract() catches DNS/network errors, lets API errors propagate
@@ -26,7 +26,7 @@ import type { SearchProvider, SearchResult, SearchOptions, ContentExtractor, Ext
 /**
  * Firecrawl Search — kept but NOT registered in the default search chain.
  * Available for manual engine override: engine="firecrawl".
- * See RFC-2 §6.6 for re-evaluation notes.
+ * See firecrawl provider comments for re-evaluation notes.
  */
 export class FirecrawlSearchProvider implements SearchProvider {
 	readonly name = "firecrawl";

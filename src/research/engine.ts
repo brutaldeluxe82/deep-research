@@ -1,23 +1,19 @@
 /**
- * Research Engine — Advanced iterative deep research pipeline.
+ * Research Engine — Iterative deep research pipeline.
  *
  * Implements:
- * - ParallelMuse: Multi-path parallel search across providers, converge results
- * - WebWeaver: Outline-then-write structured report generation
- * - Goal-directed extraction: LLM-driven extraction with {rational, evidence, summary}
+ * - Multi-provider parallel search with URL dedup
+ * - Goal-directed extraction with evidence tracking
  * - Multi-query fan-out: Generate N sub-queries, search all in parallel
- * - Source deduplication and cross-referencing
  * - Confidence scoring with evidence threading
  *
- * The engine drives the SKILL.md workflow but provides structured data
- * for the HTML report generator.
+ * The engine provides structured data for the HTML report generator.
  */
 
 import type { SearchResult } from "../search/types.ts";
 import { registry } from "../search/registry.ts";
 import { loadConfig, type DeepResearchConfig } from "../config.ts";
 import { getStrategyByName, categoryToStrategy, type ResearchStrategy } from "./strategies.ts";
-import { ReasoningCompressor, type CompressedBranch, type SynthesizedResult } from "./compressor.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -126,7 +122,7 @@ export class ResearchEngine {
 
 	/**
 	 * Initialize a research plan by decomposing the query into sub-questions.
-	 * This is Phase 1 — the LLM should call this via deep_research.
+	 * This is Phase 1 — the LLM should handle this inline.
 	 */
 	initPlan(query: string, depth: "quick" | "standard" | "deep"): ResearchPlan {
 		this.startTime = Date.now();
@@ -187,10 +183,10 @@ export class ResearchEngine {
 	}
 
 	/**
-	 * ParallelMuse: Search across ALL available providers simultaneously.
+	 * Search across all available providers simultaneously.
 	 * Each provider gets the query, results are merged and deduplicated.
 	 *
-	 * RFC-2 §6.4: Uses ALL available providers, not just top 3.
+	 * Uses ALL available providers, not just top 3.
 	 * More providers don't add latency — they're parallel — just more results.
 	 * Providers are sorted by health score (S6.7): healthy ones run first
 	 * in case we need results before the slow ones finish.
@@ -205,12 +201,12 @@ export class ResearchEngine {
 			return provider?.isAvailable();
 		});
 
-		// RFC-2 §6.7: Sort chain by health score — healthy providers first
+		// Sort chain by health score — healthy providers first
 		const sortedChain = [...chain].sort((a, b) => {
 			return ProviderHealth.getHealth(b) - ProviderHealth.getHealth(a);
 		});
 
-		// ParallelMuse: fan out queries across ALL available providers
+		// Fan out queries across all available providers
 		const allResults = new Map<string, SearchResult>();
 		const providersUsed = new Set<string>();
 
@@ -228,7 +224,7 @@ export class ResearchEngine {
 						const results = await provider.search(query, { maxResults });
 						const elapsed = Date.now() - startTime;
 
-						// Track provider health (RFC-2 §6.7)
+						// Track provider health
 						if (results.length > 0) {
 							ProviderHealth.recordSuccess(providerName, elapsed);
 							providersUsed.add(providerName);
@@ -266,58 +262,7 @@ export class ResearchEngine {
 	}
 
 	/**
-	 * ParallelMuse with compression: Search across all providers, then compress
-	 * each provider's branch separately before synthesizing.
-	 *
-	 * This is the core ParallelMuse technique: each provider's results are
-	 * compressed independently, then the compressed branches are synthesized
-	 * into a coherent result with structured claims and deduplication.
-	 */
-	async parallelSearchCompressed(
-		queries: string[],
-		maxResults: number = 10,
-	): Promise<{
-		fullResults: SearchResult[];
-		providers: string[];
-		compressed: SynthesizedResult;
-		branches: CompressedBranch[];
-	}> {
-		// Run the standard parallel search
-		const { results, providers } = await this.parallelSearch(queries, maxResults);
-
-		// Group results by provider
-		const resultsByProvider = new Map<string, SearchResult[]>();
-		for (const r of results) {
-			const provider = r.source ?? "unknown";
-			if (!resultsByProvider.has(provider)) {
-				resultsByProvider.set(provider, []);
-			}
-			resultsByProvider.get(provider)!.push(r);
-		}
-
-		// Compress each provider's branch
-		const compressor = new ReasoningCompressor();
-		const branches: CompressedBranch[] = [];
-
-		for (const [provider, providerResults] of resultsByProvider) {
-			const branch = compressor.compressBranch(provider, queries, providerResults);
-			branches.push(branch);
-		}
-
-		// Synthesize compressed branches
-		const compressed = compressor.synthesizeBranches(branches);
-
-		return {
-			fullResults: results,
-			providers,
-			compressed,
-			branches,
-		};
-	}
-
-	/**
 	 * Goal-directed extraction: Extract content from URL with structured goal.
-	 * Models the Alibaba DeepResearch {rational, evidence, summary} pattern.
 	 */
 	async goalDirectedExtract(
 		url: string,
@@ -429,7 +374,7 @@ export class ResearchEngine {
 	}
 
 	/**
-	 * Generate the WebWeaver outline from research results.
+	 * Generate the report outline from research results.
 	 * Produces a structured outline with sections mapping to sub-questions.
 	 */
 	generateOutline(): { sections: Array<{ heading: string; subQuestions: string[]; sources: SourceInfo[] }> } {
@@ -550,7 +495,7 @@ function assessCredibility(url: string): "tier-1" | "tier-2" | "tier-3" {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Provider Health Tracking (RFC-2 §6.7)
+// Provider Health Tracking
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**

@@ -4,7 +4,7 @@
  * Fetches URLs with node:fetch, strips HTML noise, returns clean text.
  * Always available as the zero-config fallback.
  *
- * Contract (RFC-2 §5):
+ * 
  * - Uses only node:fetch (no external deps)
  * - isAvailable() returns true (always available)
  * - extract() catches DNS/network errors and re-throws with context

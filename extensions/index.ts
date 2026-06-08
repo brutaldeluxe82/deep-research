@@ -1,21 +1,12 @@
 /**
  * Deep Research — main extension entry point.
  *
- * Registers pi tools:
- *   - deep_search:       Multi-provider parallel search (ParallelMuse)
- *   - deep_extract:      Goal-directed content extraction
- *   - deep_research:     Full iterative research pipeline init
- *   - research_checkpoint: Quality gate with confidence scoring
- *   - research_extract:  Goal-directed extraction with {rational, evidence, summary}
- *   - research_outline:  WebWeaver outline generation for report structure
- *   - research_report:   Generate final HTML+Markdown report
- *
- * Advanced features:
- *   - ParallelMuse: Fan-out search across N providers, converge + deduplicate
- *   - WebWeaver: Outline-then-write for structured report generation
- *   - Goal-directed extraction: LLM-driven extraction with evidence threading
- *   - 60+ source target for deep research
- *   - HTML report output with dark/light mode, confidence gauge, evidence chains
+ * Registers 5 pi tools:
+ *   - deep_search:        Multi-provider parallel search with dedup
+ *   - deep_extract:       Content extraction from URLs (with optional evidence tracking)
+ *   - research_checkpoint: Quality gate after each search round
+ *   - research_outline:   Structured outline generation for reports
+ *   - research_report:    Generate final HTML+Markdown report
  *
  * Config lives at $PI_CODING_AGENT_DIR/deep-research.json
  */
@@ -24,7 +15,6 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "@sinclair/typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { homedir } from "node:os";
 import { loadConfig, getConfigPath } from "../src/config.ts";
 import { registerProviders } from "../src/search/index.ts";
 import { registry } from "../src/search/registry.ts";
@@ -32,9 +22,6 @@ import { shouldRunWizard, runSetupWizard } from "../src/setup-wizard.ts";
 import { getEngine, resetEngine, ProviderHealth } from "../src/research/engine.ts";
 import type { SubQuestion, Evidence, SourceInfo, Contradiction } from "../src/research/engine.ts";
 import { generateHTMLReport, type ReportData, type ReportSource, type ReportSection } from "../src/report/html.ts";
-import { getStrategyByName, categoryToStrategy, listStrategyNames, type ResearchStrategy } from "../src/research/strategies.ts";
-import { executeCode, type CodeExecutionResult } from "../src/tools/code-executor.ts";
-import { parseFile, type FileParseResult } from "../src/tools/file-parser.ts";
 
 let currentCtx: ExtensionContext | undefined;
 
@@ -73,25 +60,24 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// Tool: deep_search — ParallelMuse multi-provider search
+	// Tool: deep_search — Multi-provider parallel search
 	// ══════════════════════════════════════════════════════════════════════════
 
 		pi.registerTool({
 		name: "deep_search",
 		label: "Deep Search",
 		description: [
-			"Search the web using available providers in parallel (ParallelMuse pattern).",
+			"Search the web using available providers in parallel.",
 			"With API keys: fans out across Brave, Exa, Tavily simultaneously for maximum coverage.",
 			"Without API keys: uses DuckDuckGo as zero-config fallback, or fall back to synthetic_web_search.",
-			"Results are deduplicated and merged — much higher source coverage than single-provider search.",
-			"Pass comma-separated queries to fan out broadly across the topic.",
+			"Results are deduplicated by URL — much higher source coverage than single-provider search.",
+			"Pass comma-separated queries to broaden across the topic.",
 		].join(" "),
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query (or comma-separated for multi-query fan-out)" }),
 			max_results: Type.Optional(Type.Number({ description: "Max total results across all providers (default: 10, max: 20)", default: 10, maximum: 20 })),
 			engine: Type.Optional(Type.String({ description: "Override engine: auto | brave | exa | tavily | duckduckgo" })),
 			parallel: Type.Optional(Type.Boolean({ description: "Search multiple providers in parallel (default: true)", default: true })),
-			compress: Type.Optional(Type.Boolean({ description: "Compress results via ParallelMuse reasoning-path compression (default: true)", default: true })),
 		}),
 
 		async execute(_toolCallId, params) {
@@ -100,7 +86,6 @@ export default function (pi: ExtensionAPI) {
 			const maxResults = Math.min((params.max_results as number) ?? 10, 20);
 			const engineOverride = params.engine as string | undefined;
 			const parallel = (params.parallel as boolean) ?? true;
-			const compress = (params.compress as boolean) ?? true;
 
 			// Support comma-separated queries for fan-out
 			const queries = rawQuery.split(",").map(q => q.trim()).filter(q => q.length > 0);
@@ -152,50 +137,8 @@ export default function (pi: ExtensionAPI) {
 				return { content: [{ type: "text" as const, text }], details: {} };
 			}
 
-			// ParallelMuse: fan out across providers simultaneously
-			if (compress) {
-				// Compressed mode: compress each provider branch, then synthesize
-				const { fullResults, providers, compressed, branches } = await engine.parallelSearchCompressed(queries, maxResults);
-
-				if (fullResults.length === 0) {
-					const availableProviders = registry.listAvailableSearchProviders().map(p => p.name);
-					const hasPaidKeys = availableProviders.some(p => p !== "duckduckgo");
-
-					let helpText = `No results found for "${rawQuery}".`;
-					if (!hasPaidKeys) {
-						helpText += `\n\n**No search API keys configured.** Deep research works best with API keys.\n`;
-						helpText += `To set up (takes 2 minutes):\n`;
-						helpText += `1. Get a FREE Brave Search API key: https://api.search.brave.com/app/api-keys\n`;
-						helpText += `2. Add to your shell: export BRAVE_API_KEY=your_key\n`;
-						helpText += `3. Restart this session\n\n`;
-						helpText += `Alternative: use the \`synthetic_web_search\` tool directly for basic results.`;
-					}
-					return {
-						content: [{ type: "text" as const, text: helpText }],
-						details: {},
-					};
-				}
-
-				let text = `Found ${fullResults.length} results via ${providers.length} providers (${providers.join(", ")}) — compressed:\n\n`;
-
-				// Show compressed synthesis
-				text += compressed.synthesis;
-
-				// Show compression stats
-				text += `\n\n**Compression stats:**\n`;
-				for (const branch of branches) {
-					const savings = ((1 - branch.compressedTokenEstimate / (branch.rawTokenEstimate || 1)) * 100).toFixed(0);
-					text += `- ${branch.provider}: ${branch.rawResultCount} results → ${branch.keyClaims.length} claims (${savings}% token savings)\n`;
-				}
-				text += `\nOverall compression: ${(compressed.compressionRatio * 100).toFixed(0)}% of original tokens\n`;
-				text += `Claims with cross-source support: ${compressed.claims.filter(c => c.supportingSources.length > 1).length}\n`;
-
-				return { content: [{ type: "text" as const, text }], details: {} };
-			}
-
-			// Uncompressed mode: show full results
+			// Parallel mode: fan out across all available providers
 			const { results, providers } = await engine.parallelSearch(queries, maxResults);
-			// fall through to existing code below
 
 			if (results.length === 0) {
 				const availableProviders = registry.listAvailableSearchProviders().map(p => p.name);
@@ -227,14 +170,14 @@ export default function (pi: ExtensionAPI) {
 				text += "\n\n";
 			}
 
-			text += `\n_Used ${providers.length} providers in parallel (ParallelMuse) — ${results.length} unique results after dedup._`;
+			text += `\n_Used ${providers.length} providers in parallel — ${results.length} unique results after dedup._`;
 
 			return { content: [{ type: "text" as const, text }], details: {} };
 		},
 	});
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// Tool: deep_extract — Content extraction
+	// Tool: deep_extract — Content extraction (with optional evidence tracking)
 	// ══════════════════════════════════════════════════════════════════════════
 
 	pi.registerTool({
@@ -244,16 +187,21 @@ export default function (pi: ExtensionAPI) {
 			"Extract the main content from a web page URL.",
 			"Uses Firecrawl (JS rendering), Exa, or native HTTP extraction based on available keys.",
 			"Returns clean text suitable for LLM analysis with source metadata.",
-			"For goal-directed extraction with evidence tracking, use research_extract instead.",
+			"Optionally pass goal/claim params to track evidence chains during research.",
 		].join(" "),
 		parameters: Type.Object({
 			url: Type.String({ description: "URL of the web page to extract content from" }),
+			goal: Type.Optional(Type.String({ description: "What specific information you're looking for (guides extraction focus)" })),
+			claim: Type.Optional(Type.String({ description: "The claim this evidence supports (for evidence tracking)" })),
+			sub_question_id: Type.Optional(Type.String({ description: "ID of the sub-question this relates to (e.g., sq-1)" })),
 			max_tokens: Type.Optional(Type.Number({ description: "Max tokens to return (default: 8000)", default: 8000 })),
 		}),
 
 		async execute(_toolCallId, params) {
 			const config = loadConfig();
 			const url = params.url as string;
+			const goal = (params.goal as string | undefined) ?? "";
+			const claim = params.claim as string | undefined;
 			const maxTokens = (params.max_tokens as number) ?? config.extraction.maxTokensPerPage;
 
 			const result = await registry.extractWithFallback(
@@ -271,125 +219,33 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const engine = getEngine(config);
-			// Track source in the engine
-			engine.goalDirectedExtract(url, "", maxTokens);
+			engine.goalDirectedExtract(url, goal, maxTokens);
 
-			const header = `# ${result.title}\nURL: ${result.url}${result.truncated ? " [TRUNCATED]" : ""}\n\n---\n\n`;
-			return {
-				content: [{ type: "text" as const, text: header + result.content }],
-				details: {},
-			};
-		},
-	});
+			const credTier = assessCredibilityQuick(url);
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// Tool: deep_research — Initialize research pipeline
-	// ══════════════════════════════════════════════════════════════════════════
+			let header = `# ${result.title}\nURL: ${result.url}${result.truncated ? " [TRUNCATED]" : ""}\n`;
+			header += `Credibility: ${credTier}\n`;
+			if (goal) header += `Goal: ${goal}\n`;
+			if (claim) header += `Supports claim: "${claim}"\n`;
+			header += `\n---\n\n`;
 
-	pi.registerTool({
-		name: "deep_research",
-		label: "Deep Research",
-		description: [
-			"Run iterative deep research: multi-round parallel search, goal-directed extraction, confidence-gated synthesis.",
-			"Uses ParallelMuse (multi-provider parallel search), WebWeaver (outline-then-write), and evidence threading.",
-			"Set depth to 'quick' (2 rounds, 15 sources), 'standard' (6 rounds, 40 sources), or 'deep' (10 rounds, 60 sources).",
-			"Returns research plan with sub-questions and search strategy.",
-		].join(" "),
-		parameters: Type.Object({
-			query: Type.String({ description: "Research question or topic" }),
-			depth: Type.Optional(Type.String({ description: "Research depth: quick | standard | deep", default: "standard" })),
-			strategy: Type.Optional(Type.String({ description: "Override strategy: comparison | factcheck | deep_dive | exploratory | temporal (auto-detected if omitted)" })),
-		}),
+			let text = header + result.content;
 
-		async execute(_toolCallId, params) {
-			const query = params.query as string;
-			const depth = ((params.depth as string) ?? "standard") as "quick" | "standard" | "deep";
-			const strategyOverride = params.strategy as string | undefined;
-			const config = loadConfig();
-			const engine = getEngine(config);
-			resetEngine(); // Reset for new research run
-
-			const freshEngine = getEngine(config);
-			const plan = freshEngine.initPlan(query, depth);
-
-			// Determine strategy
-			const strategy = strategyOverride
-				? getStrategyByName(strategyOverride)
-				: freshEngine.getStrategy();
-			const strategyName = strategy?.name ?? categoryToStrategy(plan.category);
-
-			const available = registry.listAvailableSearchProviders().map(p => p.name);
-			const extractors = registry.listAvailableExtractors().map(e => e.name);
-			const target = { quick: 15, standard: 40, deep: 60 }[depth];
-
-			const textParts = [
-				`Starting deep research on: "${query}"`,
-				`Category: ${plan.category}`,
-				`Depth: ${depth} (${plan.roundsTotal} rounds, target ${target} sources)`,
-				`Strategy: ${strategyName}${strategyOverride ? " (user-specified)" : " (auto-detected)"}`,
-				`Search providers: ${available.join(", ")}`,
-				`Extractors: ${extractors.join(", ")}`,
-				`Config: ${getConfigPath()}`,
-			];
-
-			if (strategy) {
-				textParts.push(`Strategy guidance: ${strategy.description}`);
-				textParts.push(`Evidence threshold: ${strategy.evidenceThreshold} per sub-question`);
+			// If goal/claim provided, append evidence tracking prompt
+			if (goal) {
+				text += `\n\n---\n\n`;
+				text += `**After reading the content above, record key evidence:**\n`;
+				text += `For each finding, note:\n`;
+				text += `- **Rational**: Why this evidence is relevant to the goal\n`;
+				text += `- **Evidence**: The specific fact or data point\n`;
+				text += `- **Summary**: One-sentence summary of the finding\n`;
 			}
-
-			textParts.push(
-				``,
-				`## Research Plan`,
-				``,
-				`1. Decompose the query into 3-6 sub-questions`,
-				`2. For each round:`,
-				`   - Generate diverse search queries for each sub-question`,
-				`   - Fan out across ALL available providers simultaneously (ParallelMuse)`,
-				`   - Extract content from top results with goal-directed extraction`,
-				`   - Track evidence chains: claim → evidence → source`,
-				`   - Call research_checkpoint after each round`,
-				`3. When checkpoint returns 🟢, generate WebWeaver outline`,
-				`4. Write report section by section using the outline`,
-				`5. Generate HTML + Markdown report with research_report`,
-			);
-
-			if (strategy) {
-				textParts.push(
-					``,
-					`## Strategy: ${strategyName}`,
-					strategy.systemPrompt.split("\n").map((l: string) => `> ${l}`).join("\n"),
-				);
-			}
-
-			textParts.push(
-				``,
-				`Use deep_search for ParallelMuse search, deep_extract for content,`,
-				`research_extract for goal-directed extraction with evidence tracking,`,
-				`research_checkpoint after each round, and research_report for final output.`,
-			);
-
-			if (strategy) {
-				textParts.push(
-					``,
-					`## Suggested Search Queries`,
-					...strategy.searchPatterns.map(p => `- ${p.replace("{Q}", query).replace("{Q_SHORT}", query.split(" ").slice(0, 5).join(" "))}`),
-				);
-				textParts.push(
-					``,
-					`## Suggested Sub-Questions`,
-					...strategy.subQuestionTemplates.map(t => `- ${t.replace("{Q}", query).replace("{Q_SHORT}", query.split(" ").slice(0, 5).join(" "))}`),
-				);
-				textParts.push(
-					``,
-					`Available strategies: ${listStrategyNames().join(", ")}`,
-				);
-			}
-
-			const text = textParts.join("\n");
 
 			return { content: [{ type: "text" as const, text }], details: {} };
 		},
 	});
+
+
 
 	// ══════════════════════════════════════════════════════════════════════════
 	// Tool: research_checkpoint — Quality gate between rounds
@@ -476,10 +332,10 @@ export default function (pi: ExtensionAPI) {
 			if (verdict === "🔴 CONTINUE") {
 				text += `\n---\n`;
 				text += `\n**Search strategy for next round:**`;
-				text += `\n- Fan out across ALL available providers (ParallelMuse)`;
+				text += `\n- Fan out across all available providers in parallel`;
 				text += `\n- Use diverse query phrasings: rephrase, specific, broad, "latest 2026"`;
 				text += `\n- Extract deeper from the best results (don't just rely on snippets)`;
-				text += `\n- Track evidence chains with research_extract for key claims`;
+				text += `\n- Track evidence chains with deep_extract (pass goal/claim params) for key claims`;
 			}
 
 			return { content: [{ type: "text" as const, text }], details: {} };
@@ -487,74 +343,14 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// Tool: research_extract — Goal-directed extraction with evidence tracking
-	// ══════════════════════════════════════════════════════════════════════════
-
-	pi.registerTool({
-		name: "research_extract",
-		label: "Research Extract",
-		description: [
-			"Goal-directed content extraction with evidence tracking.",
-			"Extracts content from a URL, then asks you to provide {rational, evidence, summary}",
-			"for each key claim found — building an evidence chain: claim → evidence → source.",
-			"Use this instead of deep_extract when doing structured research.",
-			"Returns extracted content + source metadata for evidence threading.",
-		].join(" "),
-		parameters: Type.Object({
-			url: Type.String({ description: "URL to extract content from" }),
-			goal: Type.String({ description: "What specific information you're looking for from this page (guides extraction focus)" }),
-			claim: Type.Optional(Type.String({ description: "The claim this evidence supports (for evidence threading)" })),
-			sub_question_id: Type.Optional(Type.String({ description: "ID of the sub-question this evidence relates to (e.g., sq-1)" })),
-			max_tokens: Type.Optional(Type.Number({ description: "Max tokens to return (default: 8000)", default: 8000 })),
-		}),
-
-		async execute(_toolCallId, params) {
-			const config = loadConfig();
-			const url = params.url as string;
-			const goal = params.goal as string;
-			const claim = params.claim as string | undefined;
-			const maxTokens = (params.max_tokens as number) ?? 8000;
-
-			const engine = getEngine(config);
-			const result = await engine.goalDirectedExtract(url, goal, maxTokens);
-
-			if (!result) {
-				return {
-					content: [{ type: "text" as const, text: `Failed to extract content from ${url}` }],
-					isError: true,
-					details: {},
-				};
-			}
-
-			const credTier = assessCredibilityQuick(url);
-
-			let text = `# ${result.title}\n`;
-			text += `URL: ${result.url}\n`;
-			text += `Credibility: ${credTier}\n`;
-			text += `Goal: ${goal}\n`;
-			if (claim) text += `Supports claim: "${claim}"\n`;
-			text += `\n---\n\n${result.content}\n\n---\n\n`;
-
-			text += `**After reading the content above, record key evidence:**\n`;
-			text += `For each finding, note:\n`;
-			text += `- **Rational**: Why this evidence is relevant to the goal\n`;
-			text += `- **Evidence**: The specific fact or data point\n`;
-			text += `- **Summary**: One-sentence summary of the finding\n\n`;
-			text += `Then call research_extract again for the next URL, or proceed to research_checkpoint.`;
-
-			return { content: [{ type: "text" as const, text }], details: {} };
-		},
-	});
-
-	// ══════════════════════════════════════════════════════════════════════════
-	// Tool: research_outline — WebWeaver outline generation
+	// Tool: research_outline — Structured outline generation
 	// ══════════════════════════════════════════════════════════════════════════
 
 	pi.registerTool({
 		name: "research_outline",
 		label: "Research Outline",
 		description: [
-			"Generate a WebWeaver-style outline for the research report.",
+			"Generate a structured outline for the research report.",
 			"Creates a structured outline: each section maps to a sub-question with source assignments.",
 			"Use AFTER research_checkpoint returns 🟢 PROCEED, BEFORE writing the report.",
 			"The outline guides section-by-section writing for coherent, evidence-backed reports.",
@@ -572,7 +368,7 @@ export default function (pi: ExtensionAPI) {
 			const keyFindings = JSON.parse(params.key_findings as string) as Array<{ finding: string; sources: string[]; confidence: number }>;
 			const contradictions = params.contradictions ? JSON.parse(params.contradictions as string) : [];
 
-			let text = `# WebWeaver Outline: ${title}\n\n`;
+			let text = `# Report Outline: ${title}\n\n`;
 			text += `## I. Executive Summary\n`;
 			text += `   - Lead with the central conclusion\n`;
 			text += `   - State confidence level and source coverage\n`;
@@ -755,363 +551,6 @@ export default function (pi: ExtensionAPI) {
 	});
 
 
-	// ── Tool: research_setup ─ Re-run setup wizard (RFC-2 §6.3) ──────────────
-
-	pi.registerTool({
-		name: "research_setup",
-		label: "Research Setup",
-		description: "Re-run the deep research setup wizard. Shows detected API keys, available search providers, and how to add more. Use when you want to check or change your search configuration.",
-		parameters: Type.Object({}),
-
-		async execute() {
-			const config = loadConfig();
-			const keys = config.apiKeys as Record<string, string>;
-
-			const providerStatus: string[] = [];
-			const envKeys: Record<string, string> = {
-				brave: "BRAVE_API_KEY",
-				exa: "EXA_API_KEY",
-				tavily: "TAVILY_API_KEY",
-				firecrawl: "FIRECRAWL_API_KEY",
-			};
-			const signupUrls: Record<string, string> = {
-				brave: "https://api.search.brave.com/app/api-keys",
-				exa: "https://exa.ai",
-				tavily: "https://tavily.com",
-				firecrawl: "https://firecrawl.dev",
-			};
-
-			for (const [provider, envKey] of Object.entries(envKeys)) {
-				const hasKey = (keys[provider] && keys[provider].trim().length > 0) ||
-					(process.env[envKey] && process.env[envKey]!.trim().length > 0);
-				if (hasKey) {
-					providerStatus.push(`✅ ${provider} (${envKey} found)`);
-				} else {
-					providerStatus.push(`➖ ${provider} — get a key: ${signupUrls[provider]}`);
-				}
-			}
-
-			providerStatus.push("✅ duckduckgo (zero-config, always available)");
-
-			const availableProviders = registry.listAvailableSearchProviders();
-			const availableExtractors = registry.listAvailableExtractors();
-
-			const text = [
-				`🔍 **Deep Research Configuration**`,
-				``,
-				`Config file: ${getConfigPath()}`,
-				`Search providers: ${availableProviders.length} (${availableProviders.map(p => p.name).join(", ")})`,
-				`Extractors: ${availableExtractors.length} (${availableExtractors.map(e => e.name).join(", ")})`,
-				`Search chain: ${config.searchFallbackChain.join(" → ")}`,
-				`Extract chain: ${config.extractFallbackChain.join(" → ")}`,
-				``,
-				`**API Keys:**`,
-				...providerStatus,
-				``,
-				`To add a key:`,
-				`1. Get a FREE Brave key: https://api.search.brave.com/app/api-keys`,
-				`2. Set it: export BRAVE_API_KEY=your_key`,
-				`3. Or edit: ${getConfigPath()}`,
-			].join("\n");
-
-			return { content: [{ type: "text" as const, text }], details: {} };
-		},
-	});
-
-	// ── Tool: deep_research_doctor ─ Smoke test (RFC-2 §6.5) ────────────────
-
-	pi.registerTool({
-		name: "deep_research_doctor",
-		label: "Deep Research Doctor",
-		description: "Run diagnostics on the deep research package. Checks API keys, provider availability, and runs a test search. Use when deep research isn't working or after installation to verify everything is set up correctly.",
-		parameters: Type.Object({}),
-
-		async execute() {
-			const config = loadConfig();
-			const diagnostics: string[] = [];
-			let allOk = true;
-
-			// 1. Config file
-			const configPath = getConfigPath();
-			try {
-				const exists = fs.existsSync(configPath);
-				if (exists) {
-					diagnostics.push(`✅ Config file: ${configPath}`);
-				} else {
-					diagnostics.push(`⚠️ Config file not found (will use defaults): ${configPath}`);
-				}
-			} catch {
-				diagnostics.push(`❌ Cannot check config path: ${configPath}`);
-				allOk = false;
-			}
-
-			// 2. API keys
-			const envChecks = [
-				["BRAVE_API_KEY", "Brave Search"],
-				["EXA_API_KEY", "Exa"],
-				["TAVILY_API_KEY", "Tavily"],
-				["FIRECRAWL_API_KEY", "Firecrawl"],
-			] as const;
-			const foundKeys: string[] = [];
-
-			for (const [envVar, label] of envChecks) {
-				const val = process.env[envVar];
-				if (val && val.trim().length > 0) {
-					diagnostics.push(`✅ ${label}: ${envVar} found`);
-					foundKeys.push(label);
-				} else {
-					diagnostics.push(`➖ ${label}: ${envVar} not set`);
-				}
-			}
-
-			if (foundKeys.length === 0) {
-				diagnostics.push(`⚠️ No search API keys found — only DuckDuckGo available`);
-				allOk = false;
-			}
-
-			// 3. Provider registry
-			try {
-				const availableProviders = registry.listAvailableSearchProviders();
-				const availableExtractors = registry.listAvailableExtractors();
-				diagnostics.push(`✅ Search providers: ${availableProviders.length} (${availableProviders.map(p => p.name).join(", ")})`);
-				diagnostics.push(`✅ Extractors: ${availableExtractors.length} (${availableExtractors.map(e => e.name).join(", ")})`);
-			} catch (err) {
-				diagnostics.push(`❌ Provider registry error: ${err}`);
-				allOk = false;
-			}
-
-			// 4. Test search (only if we have API keys)
-			if (foundKeys.length > 0) {
-				diagnostics.push(``);
-				diagnostics.push(`**Test search:**`);
-				try {
-					const engine = getEngine(config);
-					engine.initPlan("pi deep research test", "quick");
-					const { results, providers } = await engine.parallelSearch(["pi coding agent"], 3);
-					if (results.length > 0) {
-						diagnostics.push(`✅ Test search OK — ${results.length} results from ${providers.join(", ")}`);
-					} else {
-						diagnostics.push(`⚠️ Test search returned 0 results from ${providers.join(", ")}`);
-						allOk = false;
-					}
-				} catch (err) {
-					diagnostics.push(`❌ Test search failed: ${err instanceof Error ? err.message : String(err)}`);
-					allOk = false;
-				}
-			} else {
-				diagnostics.push(``);
-				diagnostics.push(`⚠️ Skipping test search (no API keys configured)`);
-			}
-
-			// 5. Provider health
-			try {
-				const healthMod = await import("../src/research/engine.ts");
-				const healthSummary = healthMod.ProviderHealth.getSummary();
-				const healthEntries = Object.entries(healthSummary);
-				if (healthEntries.length > 0) {
-					diagnostics.push(``);
-					diagnostics.push(`**Provider health:**`);
-					for (const [provider, status] of healthEntries) {
-						const icon = status.health >= 80 ? "✅" : status.health >= 40 ? "⚠️" : "❌";
-						diagnostics.push(`${icon} ${provider}: health ${status.health} (${status.successes} ok, ${status.failures} failed, avg ${status.avgLatencyMs}ms)`);
-					}
-				}
-			} catch {
-				// Health module not available yet
-			}
-
-			// Summary
-			diagnostics.push(``);
-			diagnostics.push(allOk ? `✅ **All checks passed**` : `⚠️ **Some issues found** — see above for details`);
-
-			return { content: [{ type: "text" as const, text: diagnostics.join("\n") }], details: {} };
-		},
-	});
-
-	
-	// ══════════════════════════════════════════════════════════════════════════
-	// Tool: research_scholar — Academic paper search via Semantic Scholar
-	// ══════════════════════════════════════════════════════════════════════════
-
-	 pi.registerTool({
-		name: "research_scholar",
-		label: "Research Scholar",
-		description: [
-			"Search academic papers via Semantic Scholar API — FREE, no API key needed.",
-			"Returns paper titles, abstracts, authors, years, citation counts, and arxiv URLs.",
-			"Use for academic research, literature reviews, and finding peer-reviewed sources.",
-		].join(" "),
-		parameters: Type.Object({
-			query: Type.String({ description: "Academic search query" }),
-			max_results: Type.Optional(Type.Number({ description: "Max results (default: 10, max: 20)", default: 10 })),
-			year_from: Type.Optional(Type.Number({ description: "Filter papers from this year onwards" })),
-			year_to: Type.Optional(Type.Number({ description: "Filter papers up to this year" })),
-			fields_of_study: Type.Optional(Type.String({ description: "Comma-separated fields: ComputerScience, Medicine, Physics, etc." })),
-		}),
-
-		async execute(_toolCallId, params) {
-			const config = loadConfig();
-			const query = params.query as string;
-			const maxResults = Math.min((params.max_results as number) ?? 10, 20);
-			const yearFrom = params.year_from as number | undefined;
-			const yearTo = params.year_to as number | undefined;
-			const fieldsOfStudy = params.fields_of_study as string | undefined;
-
-			const engine = getEngine(config);
-			const results = await engine.parallelSearch([query], maxResults);
-
-			// Use the scholar provider specifically
-			const scholarProvider = registry.getSearchProvider("scholar");
-			if (!scholarProvider?.isAvailable()) {
-				return {
-					content: [{ type: "text" as const, text: "Semantic Scholar provider not available. This should not happen — it's a free API." }],
-					details: {},
-				};
-			}
-
-			const scholarResults = await scholarProvider.search(query, { maxResults });
-
-			if (scholarResults.length === 0) {
-				return {
-					content: [{ type: "text" as const, text: `No academic papers found for "${query}". Try a different query or check if Semantic Scholar is reachable.` }],
-					details: {},
-				};
-			}
-
-			let text = `Found ${scholarResults.length} academic papers:\n\n`;
-			for (let i = 0; i < scholarResults.length; i++) {
-				const r = scholarResults[i];
-				const authors = (r as any).authors?.slice(0, 3).join(", ") ?? "Unknown";
-				const year = (r as any).year ?? r.date ?? "";
-				const citations = (r as any).citationCount ?? 0;
-				const venue = (r as any).venue ?? "";
-				const openAccess = (r as any).openAccess ? " 🟢OA" : "";
-
-				text += `${i + 1}. **${r.title}**${openAccess}\n`;
-				text += `   ${authors}${year ? ` (${year})` : ""}${venue ? ` — ${venue}` : ""}${citations ? ` | ${citations} citations` : ""}\n`;
-				text += `   ${r.url}\n`;
-				if (r.snippet) text += `   ${r.snippet.slice(0, 200).trim()}\n`;
-				text += "\n";
-			}
-
-			return { content: [{ type: "text" as const, text }], details: {} };
-		},
-	});
-
-	// ══════════════════════════════════════════════════════════════════════════
-	// Tool: research_code — Sandboxed code execution
-	// ══════════════════════════════════════════════════════════════════════════
-
-	 pi.registerTool({
-		name: "research_code",
-		label: "Research Code",
-		description: [
-			"Execute JavaScript code in a sandboxed Node.js environment.",
-			"Useful for data analysis, calculations, and processing during research.",
-			"Requires codeExecutionEnabled to be true in config (off by default for safety).",
-		].join(" "),
-		parameters: Type.Object({
-			code: Type.String({ description: "JavaScript code to execute" }),
-			timeout_ms: Type.Optional(Type.Number({ description: "Execution timeout in ms (default: 30000)", default: 30000 })),
-		}),
-
-		async execute(_toolCallId, params) {
-			const config = loadConfig();
-
-			if (!config.codeExecutionEnabled) {
-				return {
-					content: [{
-						type: "text" as const,
-						text: [
-							"**Code execution is disabled by default for security.**",
-							"",
-							"To enable, set `codeExecutionEnabled: true` in your deep-research config:",
-							"```json",
-							"{",
-							"  \"codeExecutionEnabled\": true",
-							"}",
-							"```",
-							"",
-							`Config file: ${getConfigPath()}`,
-						].join("\n"),
-					}],
-					details: {},
-				};
-			}
-
-			const code = params.code as string;
-			const timeoutMs = (params.timeout_ms as number) ?? 30000;
-
-			const result = await executeCode(code, timeoutMs);
-
-			let text = `**Code execution result**\n\n`;
-			text += `Success: ${result.success ? "✅" : "❌"}\n`;
-			text += `Duration: ${result.durationMs}ms\n`;
-			if (result.exitCode !== null) text += `Exit code: ${result.exitCode}\n`;
-
-			if (result.stdout) {
-				text += `\n**stdout:**\n\`\`\`\n${result.stdout}\n\`\`\`\n`;
-			}
-			if (result.stderr) {
-				text += `\n**stderr:**\n\`\`\`\n${result.stderr}\n\`\`\`\n`;
-			}
-
-			return { content: [{ type: "text" as const, text }], details: {} };
-		},
-	});
-
-	// ══════════════════════════════════════════════════════════════════════════
-	// Tool: research_file — File content parsing for research
-	// ══════════════════════════════════════════════════════════════════════════
-
-	 pi.registerTool({
-		name: "research_file",
-		label: "Research File",
-		description: [
-			"Extract text content from a file for research analysis.",
-			"Supports text files, CSV, JSON, PDF (if pdftotext installed), and source code.",
-			"Useful for analyzing local documents, data files, and code during research.",
-		].join(" "),
-		parameters: Type.Object({
-			file_path: Type.String({ description: "Path to the file to parse" }),
-			max_tokens: Type.Optional(Type.Number({ description: "Max tokens to return (default: 8000)", default: 8000 })),
-		}),
-
-		async execute(_toolCallId, params) {
-			const filePath = params.file_path as string;
-			const maxTokens = (params.max_tokens as number) ?? 8000;
-
-			try {
-				const result = parseFile(filePath, maxTokens);
-
-				let text = `# ${result.filename}\n`;
-				text += `Path: ${result.absolutePath}\n`;
-				text += `Type: ${result.extension} | Words: ${result.wordCount}${result.truncated ? " | ⚠️ Truncated" : ""}\n`;
-				text += `\n---\n\n${result.content}`;
-
-				return { content: [{ type: "text" as const, text }], details: {} };
-			} catch (err) {
-				return {
-					content: [{ type: "text" as const, text: `Error parsing file: ${err instanceof Error ? err.message : String(err)}` }],
-					isError: true,
-					details: {},
-				};
-			}
-		},
-	});
-
-	// ── Command: /research ─────────────────────────────────────────────────────
-
-	try {
-		pi.registerCommand("research", {
-			description: "Start deep research on a topic",
-			handler: async (args: string) => {
-				const query = args.trim();
-				if (!query) return;
-				currentCtx?.ui.notify(`Research: ${query}`, "info");
-			},
-		});
-	} catch { /* command registration may not be available */ }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
