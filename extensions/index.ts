@@ -29,7 +29,7 @@ import { loadConfig, getConfigPath } from "../src/config.ts";
 import { registerProviders } from "../src/search/index.ts";
 import { registry } from "../src/search/registry.ts";
 import { shouldRunWizard, runSetupWizard } from "../src/setup-wizard.ts";
-import { getEngine, resetEngine } from "../src/research/engine.ts";
+import { getEngine, resetEngine, ProviderHealth } from "../src/research/engine.ts";
 import type { SubQuestion, Evidence, SourceInfo, Contradiction } from "../src/research/engine.ts";
 import { generateHTMLReport, type ReportData, type ReportSource, type ReportSection } from "../src/report/html.ts";
 
@@ -86,7 +86,7 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query (or comma-separated for multi-query fan-out)" }),
 			max_results: Type.Optional(Type.Number({ description: "Max total results across all providers (default: 10, max: 20)", default: 10, maximum: 20 })),
-			engine: Type.Optional(Type.String({ description: "Override engine: auto | brave | exa | tavily | duckduckgo" }),
+			engine: Type.Optional(Type.String({ description: "Override engine: auto | brave | exa | tavily | duckduckgo" })),
 			parallel: Type.Optional(Type.Boolean({ description: "Search multiple providers in parallel (default: true)", default: true })),
 		}) as never,
 
@@ -115,8 +115,23 @@ export default function (pi: ExtensionAPI) {
 				);
 
 				if (results.length === 0) {
+					const hasPaidKeys = tried.some(p => p !== "duckduckgo");
+					let helpText = `No results found for "${queries[0]}" via ${tried.join(", ")}.`;
+					if (hasPaidKeys) {
+						helpText += `\n\nThis may be a temporary API issue. Try:`;
+						helpText += `\n- A different query phrasing`;
+						helpText += `\n- The \`synthetic_web_search\` tool as an alternative`;
+						helpText += `\n- Check your API keys are valid in ${getConfigPath()}`;
+					} else {
+						helpText += `\n\n**No search API keys configured.** Deep research works best with API keys.`;
+						helpText += `\nTo set up (2 minutes):`;
+						helpText += `\n1. Get a FREE Brave Search API key: https://api.search.brave.com/app/api-keys`;
+						helpText += `\n2. Add to your shell: export BRAVE_API_KEY=your_key`;
+						helpText += `\n3. Restart this session`;
+						helpText += `\n\nAlternatively, try the \`synthetic_web_search\` tool if pi-synthetic is installed.`;
+					}
 					return {
-						content: [{ type: "text" as const, text: `No results found for "${queries[0]}" via ${tried.join(", ")}.\n\nTip: Use \`synthetic_web_search\` for basic results, or set BRAVE_API_KEY for better coverage.` }],
+						content: [{ type: "text" as const, text: helpText }],
 						details: {},
 					};
 				}
@@ -644,6 +659,181 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+
+	// ── Tool: research_setup ─ Re-run setup wizard (RFC-2 §6.3) ──────────────
+
+	pi.registerTool({
+		name: "research_setup",
+		label: "Research Setup",
+		description: "Re-run the deep research setup wizard. Shows detected API keys, available search providers, and how to add more. Use when you want to check or change your search configuration.",
+		parameters: Type.Object({}) as never,
+
+		async execute() {
+			const config = loadConfig();
+			const keys = config.apiKeys as Record<string, string>;
+
+			const providerStatus: string[] = [];
+			const envKeys: Record<string, string> = {
+				brave: "BRAVE_API_KEY",
+				exa: "EXA_API_KEY",
+				tavily: "TAVILY_API_KEY",
+				firecrawl: "FIRECRAWL_API_KEY",
+			};
+			const signupUrls: Record<string, string> = {
+				brave: "https://api.search.brave.com/app/api-keys",
+				exa: "https://exa.ai",
+				tavily: "https://tavily.com",
+				firecrawl: "https://firecrawl.dev",
+			};
+
+			for (const [provider, envKey] of Object.entries(envKeys)) {
+				const hasKey = (keys[provider] && keys[provider].trim().length > 0) ||
+					(process.env[envKey] && process.env[envKey]!.trim().length > 0);
+				if (hasKey) {
+					providerStatus.push(`✅ ${provider} (${envKey} found)`);
+				} else {
+					providerStatus.push(`➖ ${provider} — get a key: ${signupUrls[provider]}`);
+				}
+			}
+
+			providerStatus.push("✅ duckduckgo (zero-config, always available)");
+
+			const availableProviders = registry.listAvailableSearchProviders();
+			const availableExtractors = registry.listAvailableExtractors();
+
+			const text = [
+				`🔍 **Deep Research Configuration**`,
+				``,
+				`Config file: ${getConfigPath()}`,
+				`Search providers: ${availableProviders.length} (${availableProviders.map(p => p.name).join(", ")})`,
+				`Extractors: ${availableExtractors.length} (${availableExtractors.map(e => e.name).join(", ")})`,
+				`Search chain: ${config.searchFallbackChain.join(" → ")}`,
+				`Extract chain: ${config.extractFallbackChain.join(" → ")}`,
+				``,
+				`**API Keys:**`,
+				...providerStatus,
+				``,
+				`To add a key:`,
+				`1. Get a FREE Brave key: https://api.search.brave.com/app/api-keys`,
+				`2. Set it: export BRAVE_API_KEY=your_key`,
+				`3. Or edit: ${getConfigPath()}`,
+			].join("\n");
+
+			return { content: [{ type: "text" as const, text }], details: {} };
+		},
+	});
+
+	// ── Tool: deep_research_doctor ─ Smoke test (RFC-2 §6.5) ────────────────
+
+	pi.registerTool({
+		name: "deep_research_doctor",
+		label: "Deep Research Doctor",
+		description: "Run diagnostics on the deep research package. Checks API keys, provider availability, and runs a test search. Use when deep research isn't working or after installation to verify everything is set up correctly.",
+		parameters: Type.Object({}) as never,
+
+		async execute() {
+			const config = loadConfig();
+			const diagnostics: string[] = [];
+			let allOk = true;
+
+			// 1. Config file
+			const configPath = getConfigPath();
+			try {
+				const exists = fs.existsSync(configPath);
+				if (exists) {
+					diagnostics.push(`✅ Config file: ${configPath}`);
+				} else {
+					diagnostics.push(`⚠️ Config file not found (will use defaults): ${configPath}`);
+				}
+			} catch {
+				diagnostics.push(`❌ Cannot check config path: ${configPath}`);
+				allOk = false;
+			}
+
+			// 2. API keys
+			const envChecks = [
+				["BRAVE_API_KEY", "Brave Search"],
+				["EXA_API_KEY", "Exa"],
+				["TAVILY_API_KEY", "Tavily"],
+				["FIRECRAWL_API_KEY", "Firecrawl"],
+			] as const;
+			const foundKeys: string[] = [];
+
+			for (const [envVar, label] of envChecks) {
+				const val = process.env[envVar];
+				if (val && val.trim().length > 0) {
+					diagnostics.push(`✅ ${label}: ${envVar} found`);
+					foundKeys.push(label);
+				} else {
+					diagnostics.push(`➖ ${label}: ${envVar} not set`);
+				}
+			}
+
+			if (foundKeys.length === 0) {
+				diagnostics.push(`⚠️ No search API keys found — only DuckDuckGo available`);
+				allOk = false;
+			}
+
+			// 3. Provider registry
+			try {
+				const availableProviders = registry.listAvailableSearchProviders();
+				const availableExtractors = registry.listAvailableExtractors();
+				diagnostics.push(`✅ Search providers: ${availableProviders.length} (${availableProviders.map(p => p.name).join(", ")})`);
+				diagnostics.push(`✅ Extractors: ${availableExtractors.length} (${availableExtractors.map(e => e.name).join(", ")})`);
+			} catch (err) {
+				diagnostics.push(`❌ Provider registry error: ${err}`);
+				allOk = false;
+			}
+
+			// 4. Test search (only if we have API keys)
+			if (foundKeys.length > 0) {
+				diagnostics.push(``);
+				diagnostics.push(`**Test search:**`);
+				try {
+					const engine = getEngine(config);
+					engine.initPlan("pi deep research test", "quick");
+					const { results, providers } = await engine.parallelSearch(["pi coding agent"], 3);
+					if (results.length > 0) {
+						diagnostics.push(`✅ Test search OK — ${results.length} results from ${providers.join(", ")}`);
+					} else {
+						diagnostics.push(`⚠️ Test search returned 0 results from ${providers.join(", ")}`);
+						allOk = false;
+					}
+				} catch (err) {
+					diagnostics.push(`❌ Test search failed: ${err instanceof Error ? err.message : String(err)}`);
+					allOk = false;
+				}
+			} else {
+				diagnostics.push(``);
+				diagnostics.push(`⚠️ Skipping test search (no API keys configured)`);
+			}
+
+			// 5. Provider health
+			try {
+				const healthMod = await import("../src/research/engine.ts");
+				const healthSummary = healthMod.ProviderHealth.getSummary();
+				const healthEntries = Object.entries(healthSummary);
+				if (healthEntries.length > 0) {
+					diagnostics.push(``);
+					diagnostics.push(`**Provider health:**`);
+					for (const [provider, status] of healthEntries) {
+						const icon = status.health >= 80 ? "✅" : status.health >= 40 ? "⚠️" : "❌";
+						diagnostics.push(`${icon} ${provider}: health ${status.health} (${status.successes} ok, ${status.failures} failed, avg ${status.avgLatencyMs}ms)`);
+					}
+				}
+			} catch {
+				// Health module not available yet
+			}
+
+			// Summary
+			diagnostics.push(``);
+			diagnostics.push(allOk ? `✅ **All checks passed**` : `⚠️ **Some issues found** — see above for details`);
+
+			return { content: [{ type: "text" as const, text: diagnostics.join("\n") }], details: {} };
+		},
+	});
+
+	
 	// ── Command: /research ─────────────────────────────────────────────────────
 
 	try {

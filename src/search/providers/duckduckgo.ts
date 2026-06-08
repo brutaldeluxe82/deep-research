@@ -1,9 +1,24 @@
 /**
- * DuckDuckGo Search provider — no API key required.
- * Uses the DuckDuckGo HTML instant-answer API.
+ * DuckDuckGo Search provider — zero-config fallback.
  *
- * This is the zero-config fallback that always works.
+ * Uses DDG's HTML instant-answer API (html.duckduckgo.com).
+ * Falls back to the lite version (lite.duckduckgo.com) which has
+ * simpler HTML that's less likely to break on layout changes.
+ *
+ * This is the ONLY provider that works without an API key.
  * Quality is lower than Brave/Exa but it needs zero setup.
+ *
+ * Contract (RFC-2 §5):
+ * - Uses only node:fetch (no external deps)
+ * - isAvailable() returns true (no key needed)
+ * - search() catches all errors and returns [] (never throws)
+ * - Handles DNS failures, rate limits, and timeouts gracefully
+ * - Timeout: 12s
+ * - No state between calls (no cookies, no session)
+ *
+ * DuckDuckGo exception (RFC-2 §5): isAvailable()=true even though
+ * results may be empty (rate-limited, blocked). This is acceptable
+ * because it CAN return results, unlike phantom providers that NEVER can.
  */
 
 import type { SearchProvider, SearchResult, SearchOptions } from "../types.ts";
@@ -13,51 +28,86 @@ export class DuckDuckGoSearchProvider implements SearchProvider {
 	readonly label = "DuckDuckGo";
 
 	isAvailable(): boolean {
-		return true; // No API key needed
+		return true; // No API key needed — zero-config
 	}
 
 	async search(query: string, opts?: SearchOptions): Promise<SearchResult[]> {
-		const url = new URL("https://html.duckduckgo.com/html/");
-		url.searchParams.set("q", query);
+		const maxResults = opts?.maxResults ?? 5;
 
-		const resp = await fetch(url.toString(), {
-			headers: {
-				"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-				"Accept": "text/html",
-			},
-			signal: AbortSignal.timeout(10000),
-		});
+		// Try the main HTML endpoint first
+		const results = await this.searchHtml(query, maxResults);
 
-		if (!resp.ok) {
-			throw new Error(`DuckDuckGo returned ${resp.status}`);
+		// If that failed, try the lite version (simpler HTML, more resilient)
+		if (results.length === 0) {
+			return this.searchLite(query, maxResults);
 		}
 
-		const html = await resp.text();
+		return results;
+	}
+
+	/** Parse the main DDG HTML SERP. */
+	private async searchHtml(query: string, maxResults: number): Promise<SearchResult[]> {
+		try {
+			const url = new URL("https://html.duckduckgo.com/html/");
+			url.searchParams.set("q", query);
+
+			const resp = await fetch(url.toString(), {
+				headers: {
+					"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+					"Accept": "text/html",
+				},
+				signal: AbortSignal.timeout(12000),
+			});
+
+			if (!resp.ok) return [];
+
+			const html = await resp.text();
+			return this.parseHtmlResults(html, maxResults);
+		} catch {
+			return [];
+		}
+	}
+
+	/** Parse the simpler DDG Lite SERP — fallback when main HTML fails. */
+	private async searchLite(query: string, maxResults: number): Promise<SearchResult[]> {
+		try {
+			const url = new URL("https://lite.duckduckgo.com/lite/");
+			url.searchParams.set("q", query);
+
+			const resp = await fetch(url.toString(), {
+				headers: {
+					"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+					"Accept": "text/html",
+				},
+				signal: AbortSignal.timeout(12000),
+			});
+
+			if (!resp.ok) return [];
+
+			const html = await resp.text();
+			return this.parseLiteResults(html, maxResults);
+		} catch {
+			return [];
+		}
+	}
+
+	/** Parse main DDG HTML results. */
+	private parseHtmlResults(html: string, maxResults: number): SearchResult[] {
 		const results: SearchResult[] = [];
 
-		// Parse the HTML SERP — DuckDuckGo organic results are in .result blocks
-		const resultRegex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>/gis;
-		const snippetRegex = /<a[^>]+class="result__snippet"[^>]*>(.*?)<\/a>/gis;
-		const titleRegex = /<[^>]+>([^<]+)<\/[^>]+>/g;
-
-		// Simplified parsing — DuckDuckGo HTML is relatively stable
 		const resultBlocks = html.split(/class="result\s/gi).slice(1);
-		const maxResults = opts?.maxResults ?? 5;
 
 		for (const block of resultBlocks.slice(0, maxResults)) {
 			try {
-				// Extract URL from the result link
 				const linkMatch = block.match(/href="\/\/duckduckgo\.com\/l\/\?uddg=([^"&]+)/);
 				if (!linkMatch) continue;
 				const rawUrl = decodeURIComponent(linkMatch[1]);
 
-				// Extract title
 				const titleMatch = block.match(/class="result__a"[^>]*>([\s\S]*?)<\/a>/i);
 				const title = titleMatch
 					? titleMatch[1].replace(/<[^>]+>/g, "").trim()
 					: "";
 
-				// Extract snippet
 				const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i);
 				const snippet = snippetMatch
 					? snippetMatch[1].replace(/<[^>]+>/g, "").trim()
@@ -69,6 +119,47 @@ export class DuckDuckGoSearchProvider implements SearchProvider {
 			} catch {
 				// Skip malformed results
 			}
+		}
+
+		return results;
+	}
+
+	/** Parse DDG Lite results — much simpler HTML structure.
+	 *  Lite uses table rows: each result is a <tr> with a link in the
+	 *  first cell and snippet in the second. */
+	private parseLiteResults(html: string, maxResults: number): SearchResult[] {
+		const results: SearchResult[] = [];
+
+		// Lite format: <a rel="nofollow" href="URL">Title</a>
+		const linkRegex = /<a[^>]+rel="nofollow"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+		const snippetRegex = /<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>/gi;
+
+		// Collect all links first
+		const links: Array<{ url: string; title: string }> = [];
+		let match: RegExpExecArray | null;
+
+		while ((match = linkRegex.exec(html)) !== null) {
+			const url = match[1];
+			const title = match[2].replace(/<[^>]+>/g, "").trim();
+			if (url && url.startsWith("http") && title) {
+				links.push({ url, title });
+			}
+		}
+
+		// Collect snippets
+		const snippets: string[] = [];
+		while ((match = snippetRegex.exec(html)) !== null) {
+			snippets.push(match[1].replace(/<[^>]+>/g, "").trim());
+		}
+
+		// Merge — lite format has links and snippets in alternating rows
+		const count = Math.min(links.length, maxResults);
+		for (let i = 0; i < count; i++) {
+			results.push({
+				title: links[i].title,
+				url: links[i].url,
+				snippet: snippets[i] ?? "",
+			});
 		}
 
 		return results;

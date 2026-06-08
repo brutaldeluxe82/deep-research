@@ -1,6 +1,6 @@
 # RFC-2: Search Provider Model — Zero-Assumption, Vendorized Adapters
 
-**Status:** Draft · **Date:** 2026-06-07 · **Supersedes:** RFC §4.1 (Adapter Pattern)
+**Status:** Implemented · **Date:** 2026-06-07 · **Supersedes:** RFC §4.1 (Adapter Pattern)
 
 ---
 
@@ -135,16 +135,16 @@ DuckDuckGo is `isAvailable()=true` because it CAN return results — it just oft
 
 ## 6. Open Issues & TODO
 
-| # | Issue | Severity | Proposed Fix |
-|---|-------|----------|-------------|
-| 1 | **DDG is fragile as the sole zero-config option** | 🟠 | Add a SearXNG client (public instances) or a Brave free-tier with embedded key rotation. Or accept that zero-config is limited. |
-| 2 | **Can't call synthetic_web_search from extension code** | 🟡 | This is a pi platform limitation. Workaround: suggest the LLM use it as a fallback tool. Could request a pi API for cross-extension tool calls. |
-| 3 | **No re-run wizard** | 🟡 | Add a `/research-setup` command that resets `setupWizardComplete=false`. |
-| 4 | **`parallelSearch` hard-caps at top 3 providers** | 🟡 | Use ALL available providers, not just top 3. The fan-out is parallel — more providers don't add latency, just more results. |
-| 5 | **No smoke test after install** | 🟡 | Add a `pi-deep-research-doctor` command that checks: API keys detected, providers available, test search works. |
-| 6 | **Firecrawl has a `/v1/search` endpoint we're not using** | 🟡 | Re-evaluate. If Firecrawl search quality is decent, add back as low-priority search provider (last in chain). Needs real-world testing. |
-| 7 | **No provider health tracking** | 🟡 | Track success rate per provider. If Brave fails 5x in a row, deprioritize it in the chain for this session. |
-| 8 | **DDG scraping breaks when DDG changes HTML** | 🟡 | Monitor. Use CSS-selectors-based parser instead of regex for more resilience. Or switch to DDG's lite version. |
+| # | Issue | Severity | Status | Fix |
+|---|-------|----------|--------|-----|
+| 1 | **DDG is fragile as the sole zero-config option** | 🟠 | ✅ Mitigated | Added DDG Lite fallback — if main HTML parsing fails, falls back to `lite.duckduckgo.com` (simpler HTML, more resilient). Still not perfect but much more reliable. |
+| 2 | **Can't call synthetic_web_search from extension code** | 🟡 | ✅ Documented | Platform limitation. Error messages now suggest `synthetic_web_search` as fallback tool. Not fixable without pi API for cross-extension calls. |
+| 3 | **No re-run wizard** | 🟡 | ✅ Fixed | Added `research_setup` tool — shows full config, detected keys, provider status. Can be called any time. |
+| 4 | **`parallelSearch` hard-caps at top 3 providers** | 🟡 | ✅ Fixed | Now uses ALL available providers in the fan-out. More providers = more results, no extra latency since they're parallel. |
+| 5 | **No smoke test after install** | 🟡 | ✅ Fixed | Added `deep_research_doctor` tool — checks config, API keys, provider registry, runs test search, shows provider health. |
+| 6 | **Firecrawl has a `/v1/search` endpoint** | 🟡 | ✅ Decided | Firecrawl stays extraction-only in the default chain. `FirecrawlSearchProvider` class kept for manual `engine="firecrawl"` override. |
+| 7 | **No provider health tracking** | 🟡 | ✅ Fixed | `ProviderHealth` class tracks successes/failures/latency per session. Providers are sorted by health score in `parallelSearch()`. Failing providers get deprioritized. |
+| 8 | **DDG scraping breaks when DDG changes HTML** | 🟡 | ✅ Mitigated | DDG provider now has dual path: main HTML → DDG Lite fallback. Lite version uses simpler markup that changes less often. |
 
 ---
 

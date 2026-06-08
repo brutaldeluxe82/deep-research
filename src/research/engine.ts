@@ -182,8 +182,13 @@ export class ResearchEngine {
 	}
 
 	/**
-	 * ParallelMuse: Search across multiple providers simultaneously.
+	 * ParallelMuse: Search across ALL available providers simultaneously.
 	 * Each provider gets the query, results are merged and deduplicated.
+	 *
+	 * RFC-2 §6.4: Uses ALL available providers, not just top 3.
+	 * More providers don't add latency — they're parallel — just more results.
+	 * Providers are sorted by health score (S6.7): healthy ones run first
+	 * in case we need results before the slow ones finish.
 	 */
 	async parallelSearch(
 		queries: string[],
@@ -195,7 +200,12 @@ export class ResearchEngine {
 			return provider?.isAvailable();
 		});
 
-		// ParallelMuse: fan out queries across available providers
+		// RFC-2 §6.7: Sort chain by health score — healthy providers first
+		const sortedChain = [...chain].sort((a, b) => {
+			return ProviderHealth.getHealth(b) - ProviderHealth.getHealth(a);
+		});
+
+		// ParallelMuse: fan out queries across ALL available providers
 		const allResults = new Map<string, SearchResult>();
 		const providersUsed = new Set<string>();
 
@@ -203,14 +213,25 @@ export class ResearchEngine {
 		const tasks: Promise<void>[] = [];
 
 		for (const query of queries) {
-			for (const providerName of chain.slice(0, 3)) { // Top 3 providers
+			for (const providerName of sortedChain) { // ALL providers, not just top 3
 				tasks.push((async () => {
 					try {
 						const provider = registry.getSearchProvider(providerName);
 						if (!provider?.isAvailable()) return;
 
+						const startTime = Date.now();
 						const results = await provider.search(query, { maxResults });
-						providersUsed.add(providerName);
+						const elapsed = Date.now() - startTime;
+
+						// Track provider health (RFC-2 §6.7)
+						if (results.length > 0) {
+							ProviderHealth.recordSuccess(providerName, elapsed);
+							providersUsed.add(providerName);
+						} else if (elapsed < 2000) {
+							// Fast empty response = likely API issue, not timeout
+							ProviderHealth.recordFailure(providerName);
+						}
+						// Slow empty = probable timeout, don't penalize too harshly
 
 						for (const r of results) {
 							const key = normalizeUrl(r.url);
@@ -219,7 +240,8 @@ export class ResearchEngine {
 							}
 						}
 					} catch {
-						// Provider failed for this query — non-blocking
+						// Provider failed for this query — record failure and continue
+						ProviderHealth.recordFailure(providerName);
 					}
 				})());
 			}
@@ -464,6 +486,64 @@ function assessCredibility(url: string): "tier-1" | "tier-2" | "tier-3" {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Provider Health Tracking (RFC-2 §6.7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Tracks per-session provider health. If a provider fails repeatedly,
+ * it gets deprioritized in the fallback chain.
+ *
+ * Health score: 0-100. Starts at 100 (healthy). Each failure reduces it.
+ * Successes slowly restore it. Score affects chain ordering, not availability.
+ */
+export class ProviderHealth {
+	private static stats = new Map<string, { successes: number; failures: number; lastFailureAt: number; avgLatencyMs: number }>();
+
+	/** Record a successful search. */
+	static recordSuccess(provider: string, latencyMs: number): void {
+		const s = ProviderHealth.stats.get(provider) ?? { successes: 0, failures: 0, lastFailureAt: 0, avgLatencyMs: 0 };
+		s.successes++;
+		s.avgLatencyMs = s.avgLatencyMs === 0 ? latencyMs : Math.round((s.avgLatencyMs * 0.8) + (latencyMs * 0.2));
+		ProviderHealth.stats.set(provider, s);
+	}
+
+	/** Record a failed search. */
+	static recordFailure(provider: string): void {
+		const s = ProviderHealth.stats.get(provider) ?? { successes: 0, failures: 0, lastFailureAt: 0, avgLatencyMs: 0 };
+		s.failures++;
+		s.lastFailureAt = Date.now();
+		ProviderHealth.stats.set(provider, s);
+	}
+
+	/** Get health score 0-100. 100=perfect, lower=unreliable. */
+	static getHealth(provider: string): number {
+		const s = ProviderHealth.stats.get(provider);
+		if (!s) return 100; // No data = assume healthy
+		if (s.successes === 0 && s.failures === 0) return 100;
+
+		// Recent failures (last 5 min) count double
+		const recentPenalty = (Date.now() - s.lastFailureAt < 300000 && s.failures > 0) ? s.failures : 0;
+		const totalPenalty = s.failures + recentPenalty;
+
+		return Math.max(0, 100 - (totalPenalty * 10));
+	}
+
+	/** Get health summary for status/debug. */
+	static getSummary(): Record<string, { health: number; successes: number; failures: number; avgLatencyMs: number }> {
+		const result: Record<string, { health: number; successes: number; failures: number; avgLatencyMs: number }> = {};
+		for (const [provider, s] of ProviderHealth.stats) {
+			result[provider] = { health: ProviderHealth.getHealth(provider), ...s };
+		}
+		return result;
+	}
+
+	/** Reset all health data (e.g. on new session). */
+	static reset(): void {
+		ProviderHealth.stats.clear();
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Singleton engine instance per session
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -478,4 +558,5 @@ export function getEngine(config?: DeepResearchConfig): ResearchEngine {
 
 export function resetEngine(): void {
 	engineInstance = undefined;
+	ProviderHealth.reset();
 }

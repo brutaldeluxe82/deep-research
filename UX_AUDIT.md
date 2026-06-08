@@ -92,10 +92,10 @@ No results found for "X". Tried: synthetic, duckduckgo
 
 ## Recommended Fix Priority
 
-1. **🔴 Fix synthetic provider** — make it actually work or remove it from the search provider list
-2. **🔴 Remove phantom providers** — delete Serper/Google/Gemini from KNOWN_PROVIDERS until implemented
-3. **🔴 Fix the zero-key experience** — ensure at least one reliable provider works with no configuration
-4. **🔴 Remove or wire `preferredSearchProvider`** — don't ask users to pick something that's ignored
-5. **🟠 Show detected keys in wizard** — transparency builds trust
-6. **🟠 Fix firecrawl chain position** — extraction, not search
-7. **🟡 Make errors actionable** — guide users to fix problems
+1. **🔴 Fix synthetic provider** — ✅ DONE — removed from registry and KNOWN_PROVIDERS
+2. **🔴 Remove phantom providers** — ✅ DONE — Serper/Google/Gemini removed until implemented
+3. **🔴 Fix the zero-key experience** — ✅ DONE — DDG Lite fallback added; actionable error messages with Brave signup URL
+4. **🔴 Remove or wire `preferredSearchProvider`** — ✅ DONE — wizard rewritten: shows detected keys + signup URLs, no fake "pick one" choice
+5. **🟠 Show detected keys in wizard** — ✅ DONE — wizard shows ✅/➖ for each provider with labels
+6. **🟠 Fix firecrawl chain position** — ✅ DONE — moved to extraction-only in default chain
+7. **🟡 Make errors actionable** — ✅ DONE — zero-key path shows Brave signup URL; partial-fail shows synthetic_web_search alt

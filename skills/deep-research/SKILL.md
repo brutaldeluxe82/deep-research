@@ -15,6 +15,8 @@ Conduct structured, iterative deep research using multi-provider parallel search
 - `research_extract` — Goal-directed extraction with {rational, evidence, summary} evidence tracking
 - `research_outline` — WebWeaver outline generation before writing
 - `research_report` — Generate final HTML + Markdown report with confidence gauge, evidence chains, source badges
+- `research_setup` — Check/fix search configuration (API keys, providers)
+- `deep_research_doctor` — Run diagnostics (smoke test search, health check providers)
 
 **Search providers** (auto-detected from environment):
 - **With API keys:** Brave, Exa, Tavily — used in parallel for maximum coverage
