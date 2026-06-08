@@ -179,7 +179,8 @@ export class ResearchEngine {
 		queries.push(`what is the best ${base}`);
 		queries.push(`${base} expert opinion research`);
 
-		return [...new Set(queries)].slice(0, DEPTH_SOURCE_TARGETS[this.plan.depth].queriesPerRound);
+		const depth = this.plan?.depth ?? "standard";
+		return [...new Set(queries)].slice(0, DEPTH_SOURCE_TARGETS[depth].queriesPerRound);
 	}
 
 	/**
@@ -390,9 +391,10 @@ export class ResearchEngine {
 	}
 
 	/**
-	 * Increment round counter.
+	 * Increment round counter. Safe to call even without an initialized plan.
 	 */
 	incrementRound(): number {
+		if (!this.plan) return 0;
 		this.plan.roundsCompleted++;
 		return this.plan.roundsCompleted;
 	}
@@ -401,6 +403,7 @@ export class ResearchEngine {
 	 * Get the research strategy appropriate for the current query's category.
 	 */
 	getStrategy(): ResearchStrategy {
+		if (!this.plan) return getStrategyByName("exploratory")!;
 		const strategyName = categoryToStrategy(this.plan.category);
 		return getStrategyByName(strategyName) ?? getStrategyByName("exploratory")!;
 	}
@@ -409,21 +412,24 @@ export class ResearchEngine {
 	 * Get the source target for the current depth.
 	 */
 	getSourceTarget(): number {
-		return DEPTH_SOURCE_TARGETS[this.plan.depth].sources;
+		const depth = this.plan?.depth ?? "standard";
+		return DEPTH_SOURCE_TARGETS[depth].sources;
 	}
 
 	/**
 	 * Get queries per round for the current depth.
 	 */
 	getQueriesPerRound(): number {
-		return DEPTH_SOURCE_TARGETS[this.plan.depth].queriesPerRound;
+		const depth = this.plan?.depth ?? "standard";
+		return DEPTH_SOURCE_TARGETS[depth].queriesPerRound;
 	}
 
 	/**
 	 * Get extracts per round for the current depth.
 	 */
 	getExtractPerRound(): number {
-		return DEPTH_SOURCE_TARGETS[this.plan.depth].extractPerRound;
+		const depth = this.plan?.depth ?? "standard";
+		return DEPTH_SOURCE_TARGETS[depth].extractPerRound;
 	}
 }
 
