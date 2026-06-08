@@ -40,7 +40,24 @@ src/
       firecrawl.ts               ← Content extraction only (FIRECRAWL_API_KEY)
       native-extract.ts          ← Zero-config: fetch + HTML stripping
   research/
-    engine.ts                     ← ResearchEngine, ProviderHealth, SubQuestion/Evidence tracking
+    engine.ts                       ← ResearchEngine, ProviderHealth, SubQuestion/Evidence tracking
+    strategies.ts                    ← 5 research strategy templates (comparison, factcheck, deep_dive, exploratory, temporal)
+    compressor.ts                   ← ReasoningCompressor — ParallelMuse branch compression + synthesis
+  search/
+    types.ts                      ← SearchProvider + ContentExtractor interfaces, KNOWN_PROVIDERS
+    registry.ts                   ← ProviderRegistry singleton with fallback chains
+    index.ts                      ← Wires providers to registry on session_start
+    providers/
+      brave.ts                    ← Brave Search API (BRAVE_API_KEY)
+      exa.ts                      ← Exa neural search + content extraction (EXA_API_KEY)
+      tavily.ts                   ← Tavily agent search (TAVILY_API_KEY)
+      scholar.ts                  ← Semantic Scholar academic search (FREE, zero-config)
+      duckduckgo.ts              ← Zero-config HTML scraping (main + Lite fallback)
+      firecrawl.ts               ← Content extraction only (FIRECRAWL_API_KEY)
+      native-extract.ts          ← Zero-config: fetch + HTML stripping
+  tools/
+    code-executor.ts              ← Sandboxed Node.js code execution (config-gated, off by default)
+    file-parser.ts                ← File content extraction (text, CSV, JSON, PDF, code files)
   report/
     html.ts                       ← HTML + Markdown report generator
 ```
@@ -133,19 +150,22 @@ Config is managed by chezmoi: `~/.local/share/chezmoi/dot_config/private_pi/deep
 
 ---
 
-## The 9 Tools
+## The 12 Tools
 
 | Tool | Purpose | Key Parameters |
 |------|---------|---------------|
-| `deep_search` | ParallelMuse parallel search | `query`, `max_results`, `engine`, `parallel` |
+| `deep_search` | ParallelMuse parallel search | `query`, `max_results`, `engine`, `parallel`, `compress` |
 | `deep_extract` | Content extraction from URL | `url`, `max_tokens` |
-| `deep_research` | Initialize a research run | `query`, `depth` (quick/standard/deep) |
+| `deep_research` | Initialize a research run | `query`, `depth` (quick/standard/deep), `strategy` |
 | `research_checkpoint` | Quality gate after each round | `depth`, `round`, `sub_questions_*`, `confidence`, `gaps` |
 | `research_extract` | Goal-directed extraction + evidence | `url`, `goal`, `sub_question_id` |
 | `research_outline` | WebWeaver outline generation | `query`, `sub_questions` |
 | `research_report` | HTML + Markdown report output | `query`, `depth`, `sources_*` |
 | `research_setup` | Check/fix search config | (none) |
 | `deep_research_doctor` | Smoke test diagnostics | (none) |
+| `research_scholar` | Academic paper search | `query`, `max_results`, `year_from`, `year_to`, `fields_of_study` |
+| `research_code` | Sandboxed JS code execution | `code`, `timeout_ms` |
+| `research_file` | Local file text extraction | `file_path`, `max_tokens` |
 
 ---
 
@@ -182,7 +202,24 @@ description: Conduct iterative deep research...
 
 Without `name` and `description` fields, pi won't load the skill.
 
-### 6. `preferredSearchProvider` is dead code
+### 6. `as never` is NOT needed for TypeBox parameters
+
+Previous versions of this project used `}) as never` on parameter schemas, but this is **wrong**. The official pi extension API uses TypeScript generics — `ToolDefinition<TParams>` infers `params` in `execute()` as `Static<TParams>` from TypeBox. When you cast the schema to `never`, you break this inference and get `params: never`, forcing `as string` casts everywhere.
+
+**Correct pattern** (from official pi docs/examples):
+```typescript
+pi.registerTool({
+  name: "my_tool",
+  parameters: Type.Object({
+    query: Type.String({ description: "Search query" }),
+  }),  // No `as never`!
+  async execute(_toolCallId, params) {
+    const query = params.query;  // Properly typed as string
+  },
+});
+```
+
+The `as never` pattern was cargo-culted and masks real type errors (like missing `details` on error returns).
 
 The wizard used to ask users to pick a "preferred" provider, but `parallelSearch()` ignores it entirely — it uses the `searchFallbackChain`. The new wizard shows detected keys + signup URLs instead. Don't re-add this.
 

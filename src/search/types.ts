@@ -69,6 +69,7 @@ const ENV_KEY_MAP: Record<string, string> = {
 	exa:         "EXA_API_KEY",
 	tavily:      "TAVILY_API_KEY",
 	firecrawl:   "FIRECRAWL_API_KEY",
+	scholar:     "SEMANTIC_SCHOLAR_API_KEY",
 	serper:      "SERPER_API_KEY",
 	google:      "GOOGLE_API_KEY",
 	gemini:      "GEMINI_API_KEY",
@@ -83,6 +84,7 @@ export const KNOWN_PROVIDERS = [
 	"brave",       // Best quality, requires BRAVE_API_KEY
 	"exa",         // Neural search, requires EXA_API_KEY
 	"tavily",      // Agent-optimized, requires TAVILY_API_KEY
+	"scholar",     // Academic papers via Semantic Scholar, free (optional key for higher limits)
 	"duckduckgo",  // Zero-config, always available
 	// Unimplemented — add to this list ONLY after creating the provider file:
 	// "firecrawl", // Primarily an extractor; search API is limited
@@ -104,6 +106,11 @@ export function detectAvailableProviders(configKeys: Record<string, string> = {}
 	for (const name of KNOWN_PROVIDERS) {
 		if (name === "duckduckgo") {
 			// DuckDuckGo scraping works without an API key
+			available.push(name);
+			continue;
+		}
+		if (name === "scholar") {
+			// Semantic Scholar API is free (key optional for higher rate limits)
 			available.push(name);
 			continue;
 		}

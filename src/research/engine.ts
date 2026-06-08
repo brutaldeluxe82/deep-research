@@ -16,6 +16,8 @@
 import type { SearchResult } from "../search/types.ts";
 import { registry } from "../search/registry.ts";
 import { loadConfig, type DeepResearchConfig } from "../config.ts";
+import { getStrategyByName, categoryToStrategy, type ResearchStrategy } from "./strategies.ts";
+import { ReasoningCompressor, type CompressedBranch, type SynthesizedResult } from "./compressor.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -90,6 +92,8 @@ export interface ResearchResult {
 	searchProvidersUsed: string[];
 }
 
+export type { ResearchStrategy };
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Config overrides for high-source-count research
 // ─────────────────────────────────────────────────────────────────────────────
@@ -114,6 +118,7 @@ export class ResearchEngine {
 	private providersUsed = new Set<string>();
 	private totalSearchResults = 0;
 	private startTime = 0;
+	private _strategyName?: string; // Override strategy name
 
 	constructor(config?: DeepResearchConfig) {
 		this.config = config ?? loadConfig();
@@ -261,6 +266,56 @@ export class ResearchEngine {
 	}
 
 	/**
+	 * ParallelMuse with compression: Search across all providers, then compress
+	 * each provider's branch separately before synthesizing.
+	 *
+	 * This is the core ParallelMuse technique: each provider's results are
+	 * compressed independently, then the compressed branches are synthesized
+	 * into a coherent result with structured claims and deduplication.
+	 */
+	async parallelSearchCompressed(
+		queries: string[],
+		maxResults: number = 10,
+	): Promise<{
+		fullResults: SearchResult[];
+		providers: string[];
+		compressed: SynthesizedResult;
+		branches: CompressedBranch[];
+	}> {
+		// Run the standard parallel search
+		const { results, providers } = await this.parallelSearch(queries, maxResults);
+
+		// Group results by provider
+		const resultsByProvider = new Map<string, SearchResult[]>();
+		for (const r of results) {
+			const provider = r.source ?? "unknown";
+			if (!resultsByProvider.has(provider)) {
+				resultsByProvider.set(provider, []);
+			}
+			resultsByProvider.get(provider)!.push(r);
+		}
+
+		// Compress each provider's branch
+		const compressor = new ReasoningCompressor();
+		const branches: CompressedBranch[] = [];
+
+		for (const [provider, providerResults] of resultsByProvider) {
+			const branch = compressor.compressBranch(provider, queries, providerResults);
+			branches.push(branch);
+		}
+
+		// Synthesize compressed branches
+		const compressed = compressor.synthesizeBranches(branches);
+
+		return {
+			fullResults: results,
+			providers,
+			compressed,
+			branches,
+		};
+	}
+
+	/**
 	 * Goal-directed extraction: Extract content from URL with structured goal.
 	 * Models the Alibaba DeepResearch {rational, evidence, summary} pattern.
 	 */
@@ -398,6 +453,14 @@ export class ResearchEngine {
 	}
 
 	/**
+	 * Get the research strategy appropriate for the current query's category.
+	 */
+	getStrategy(): ResearchStrategy {
+		const strategyName = categoryToStrategy(this.plan.category);
+		return getStrategyByName(strategyName) ?? getStrategyByName("exploratory")!;
+	}
+
+	/**
 	 * Get the source target for the current depth.
 	 */
 	getSourceTarget(): number {
@@ -431,6 +494,7 @@ function classifyQuery(query: string): string {
 	if (/what is|define|explain|meaning/i.test(q)) return "definition";
 	if (/fact|true|false| myths?|debunk/i.test(q)) return "factcheck";
 	if (/price|cost|afford|buy|review/i.test(q)) return "product";
+	if (/latest|recent|new|current|update|news|2024|2025|2026|history|timeline|chronology/i.test(q)) return "temporal";
 	return "general";
 }
 

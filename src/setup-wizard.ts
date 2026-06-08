@@ -12,7 +12,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { loadConfig, getConfigPath, writeDefaultConfig } from "../config.ts";
+import { loadConfig, getConfigPath, writeDefaultConfig } from "./config.ts";
 
 /** Search provider env key info. */
 const SEARCH_KEY_INFO: Record<string, { label: string; desc: string; signupUrl: string }> = {

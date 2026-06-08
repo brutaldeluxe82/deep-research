@@ -8,7 +8,7 @@ description: Conduct iterative deep research using multi-provider parallel searc
 Conduct structured, iterative deep research using multi-provider parallel search, goal-directed extraction, and confidence-driven iteration. Outputs beautiful HTML + Markdown reports.
 
 **Available tools:**
-- `deep_search` — ParallelMuse search across all available providers (Brave / Exa / Tavily + DuckDuckGo fallback)
+- `deep_search` — ParallelMuse search across all available providers (Brave / Exa / Tavily / Scholar + DuckDuckGo fallback)
 - `deep_extract` — Extract clean content from URLs (Firecrawl → Exa → native HTTP)
 - `deep_research` — Start a research run (sets up depth + parameters + strategy)
 - `research_checkpoint` — **MANDATORY** quality gate after each search round
@@ -17,11 +17,41 @@ Conduct structured, iterative deep research using multi-provider parallel search
 - `research_report` — Generate final HTML + Markdown report with confidence gauge, evidence chains, source badges
 - `research_setup` — Check/fix search configuration (API keys, providers)
 - `deep_research_doctor` — Run diagnostics (smoke test search, health check providers)
+- `research_scholar` — Search academic papers via Semantic Scholar (free, no API key needed)
+- `research_code` — Execute JavaScript code in a sandboxed environment (must be enabled in config)
+- `research_file` — Extract text content from local files (text, CSV, JSON, PDF, code)
 
 **Search providers** (auto-detected from environment):
 - **With API keys:** Brave, Exa, Tavily — used in parallel for maximum coverage
 - **Without API keys:** DuckDuckGo only (zero-config, limited quality)
+- **Always available:** Semantic Scholar (free academic search — no key needed)
 - **Tip:** If no results from `deep_search`, fall back to `synthetic_web_search` tool directly
+
+## Research Strategy Templates
+
+The `deep_research` tool auto-detects a research strategy based on the query type. You can also specify `strategy` explicitly to override auto-detection.
+
+| Strategy | Query Type | Evidence Threshold | Approach |
+|----------|-----------|-------------------|----------|
+| `comparison` | "X vs Y" | 3 per option | Search each option separately, then direct comparisons |
+| `factcheck` | "is X true" | 2 supporting + 2 contradicting | Search claim, debunking, academic sources |
+| `deep_dive` | "explain X" | 5 | Overview → technical → edge cases |
+| `exploratory` | open-ended | 3 per sub-question | Broad → narrow funnel |
+| `temporal` | "latest X" or "history of X" | 2 per time period | Chronological, recency filters |
+
+**Auto-detection rules:**
+- `comparison`: Query contains vs, versus, compare, better, best
+- `factcheck`: Query asks if something is true/false, mentions myths, debunking
+- `deep_dive`: Query starts with "what is", "define", "explain"
+- `temporal`: Query mentions latest, recent, history, timeline, or years (2024-2026)
+- `exploratory`: Default for all other queries
+
+Example:
+```
+deep_research(query="React vs Vue performance", strategy="comparison")
+deep_research(query="Is AI conscious?", strategy="factcheck")
+deep_research(query="latest LLM benchmarks")  // auto-detected as temporal
+```
 
 ## When to Use
 
@@ -168,6 +198,8 @@ After generating the report:
 ```
 deep_research(query="...", depth="standard")     → Initialize + plan
 deep_search(query="...", parallel=true, max_results=10)  → ParallelMuse search
+#     compress=true (default) → compress each provider branch, then synthesize (saves 10-30% tokens)
+#     compress=false → return raw merged results (full detail)
 research_extract(url="...", goal="...", claim="...")      → Goal-directed extraction
 research_checkpoint(depth, round, ..., confidence, gaps)  → Quality gate
 research_outline(title, sub_questions, key_findings)      → WebWeaver outline

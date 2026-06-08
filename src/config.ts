@@ -79,6 +79,9 @@ export interface DeepResearchConfig {
 
 	/** Whether to prompt the setup wizard on first run. */
 	setupWizardComplete: boolean;
+
+	/** Whether sandboxed code execution is enabled. */
+	codeExecutionEnabled: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +94,7 @@ const DEFAULTS: DeepResearchConfig = {
 		"brave",        // If BRAVE_API_KEY present → best quality
 		"exa",          // If EXA_API_KEY present → neural search
 		"tavily",       // If TAVILY_API_KEY present → agent-optimized
+		"scholar",      // Semantic Scholar — free academic search (no key needed)
 		"duckduckgo",   // Always available, no key needed — zero-config fallback
 	],
 	extractFallbackChain: [
@@ -110,6 +114,7 @@ const DEFAULTS: DeepResearchConfig = {
 		timeoutMs: 20000,
 	},
 	setupWizardComplete: false,
+	codeExecutionEnabled: false,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,6 +126,7 @@ const ENV_KEY_MAP: Record<string, string> = {
 	exa:       "EXA_API_KEY",
 	tavily:    "TAVILY_API_KEY",
 	firecrawl: "FIRECRAWL_API_KEY",
+	scholar:   "SEMANTIC_SCHOLAR_API_KEY",
 	serper:    "SERPER_API_KEY",
 	google:    "GOOGLE_API_KEY",
 	gemini:    "GEMINI_API_KEY",
@@ -162,6 +168,7 @@ export function loadConfig(): DeepResearchConfig {
 				}
 			}
 			if (user.extraction) Object.assign(result.extraction, user.extraction);
+			if (user.codeExecutionEnabled !== undefined) result.codeExecutionEnabled = user.codeExecutionEnabled;
 		}
 	} catch {
 		// Parse error — return defaults

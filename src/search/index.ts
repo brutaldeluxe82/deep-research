@@ -17,6 +17,7 @@ import { BraveSearchProvider } from "./providers/brave.ts";
 import { ExaSearchProvider, ExaContentExtractor } from "./providers/exa.ts";
 import { DuckDuckGoSearchProvider } from "./providers/duckduckgo.ts";
 import { TavilySearchProvider } from "./providers/tavily.ts";
+import { ScholarSearchProvider } from "./providers/scholar.ts";
 import { FirecrawlContentExtractor } from "./providers/firecrawl.ts";
 
 // Content extractors (separate from search, some providers implement both)
@@ -38,6 +39,7 @@ export function registerProviders(config: DeepResearchConfig): void {
 	registry.registerSearchProvider(new BraveSearchProvider(resolveApiKey("brave", keys)));
 	registry.registerSearchProvider(new ExaSearchProvider(resolveApiKey("exa", keys)));
 	registry.registerSearchProvider(new TavilySearchProvider(resolveApiKey("tavily", keys)));
+	registry.registerSearchProvider(new ScholarSearchProvider(resolveApiKey("scholar", keys)));
 	registry.registerSearchProvider(new DuckDuckGoSearchProvider());
 
 	// --- Content extractors ---
