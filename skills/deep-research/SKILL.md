@@ -26,6 +26,15 @@ Conduct structured, iterative deep research using multi-provider parallel search
 - Fact-checking or multi-perspective analysis
 - Any question a single search can't fully answer
 
+## When NOT to Use
+
+- Quick factual lookups (use `synthetic_web_search` or `web_search` instead)
+- Local repo search (use `search`/`grep` instead)
+- Single-page reads (use `web_fetch` instead)
+- Simple yes/no questions
+
+**Complementarity:** This skill provides iterative depth. For quick lookups, use simpler tools. Both can coexist — depth when needed, speed when possible.
+
 ## Research Depth & Source Targets
 
 | Depth | Rounds | Target Sources | Queries/Round | Time | When to use |

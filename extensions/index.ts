@@ -219,7 +219,8 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const engine = getEngine(config);
-			engine.goalDirectedExtract(url, goal, maxTokens);
+			// Track the source in the engine (no re-fetch — we already have the result)
+			engine.recordExtractedSource(url, result.title ?? url, result.content?.slice(0, 200) ?? "");
 
 			const credTier = assessCredibilityQuick(url);
 

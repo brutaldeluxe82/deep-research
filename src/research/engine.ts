@@ -425,11 +425,25 @@ export class ResearchEngine {
 	}
 
 	/**
-	 * Get extracts per round for the current depth.
+	 * Record a source that was extracted (without re-fetching).
+	 * Called by deep_extract after it has already fetched the content.
 	 */
-	getExtractPerRound(): number {
-		const depth = this.plan?.depth ?? "standard";
-		return DEPTH_SOURCE_TARGETS[depth].extractPerRound;
+	recordExtractedSource(url: string, title: string, snippet: string): void {
+		if (!this.plan) return;
+		const normalizedUrl = normalizeUrl(url);
+		if (this.urlIndex.has(normalizedUrl)) return;
+
+		this.urlIndex.add(normalizedUrl);
+		const source: SourceInfo = {
+			title,
+			url,
+			credibility: assessCredibility(url),
+			snippet,
+			fullContent: "<tracked>",
+			extractedFrom: "deep_extract",
+		};
+		this.sources.push(source);
+		this.plan.sourcesFound.push(source);
 	}
 }
 
