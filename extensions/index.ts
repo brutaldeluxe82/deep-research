@@ -272,13 +272,13 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params) {
 			const config = loadConfig();
-			const depth = params.depth as string;
-			const round = params.round as number;
-			const answered = params.sub_questions_answered as number;
-			const total = params.total_sub_questions as number;
-			const sources = params.total_sources as number;
-			const confidence = params.confidence as number;
-			const gaps = params.gaps as string;
+			const depth = (params.depth as string) ?? "quick";
+			const round = (params.round as number) ?? 1;
+			const answered = (params.sub_questions_answered as number) ?? 0;
+			const total = (params.total_sub_questions as number) ?? 1;
+			const sources = (params.total_sources as number) ?? 0;
+			const confidence = (params.confidence as number) ?? 50;
+			const gaps = (params.gaps as string) ?? "";
 
 			const targetSources = { quick: 15, standard: 40, deep: 60 }[depth] ?? 40;
 			const maxRounds = { quick: 2, standard: 6, deep: 10 }[depth] ?? 6;
@@ -363,9 +363,9 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params) {
-			const title = params.title as string;
-			const subQuestions = JSON.parse(params.sub_questions as string) as Array<{ id: string; question: string; status: string }>;
-			const keyFindings = JSON.parse(params.key_findings as string) as Array<{ finding: string; sources: string[]; confidence: number }>;
+			const title = (params.title as string) ?? "Report";
+			const subQuestions = params.sub_questions ? JSON.parse(params.sub_questions as string) : [];
+			const keyFindings = params.key_findings ? JSON.parse(params.key_findings as string) : [];
 			const contradictions = params.contradictions ? JSON.parse(params.contradictions as string) : [];
 
 			let text = `# Report Outline: ${title}\n\n`;
@@ -444,14 +444,14 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params) {
-			const title = params.title as string;
-			const query = params.query as string;
-			const depth = params.depth as string;
-			const rounds = params.rounds as number;
-			const confidence = params.confidence as number;
-			const executiveSummary = params.executive_summary as string;
-			const sectionsRaw = JSON.parse(params.sections as string) as Array<{ heading: string; level: number; content: string }>;
-			const sourcesRaw = JSON.parse(params.sources as string) as Array<{ title: string; url: string; date?: string; credibility?: string }>;
+			const title = (params.title as string) ?? "Research Report";
+			const query = (params.query as string) ?? "";
+			const depth = (params.depth as string) ?? "quick";
+			const rounds = (params.rounds as number) ?? 1;
+			const confidence = (params.confidence as number) ?? 50;
+			const executiveSummary = (params.executive_summary as string) ?? "";
+			const sectionsRaw = params.sections ? JSON.parse(params.sections as string) : [];
+			const sourcesRaw = params.sources ? JSON.parse(params.sources as string) : [];
 			const contradictionsRaw = params.contradictions
 				? JSON.parse(params.contradictions as string)
 				: [];
