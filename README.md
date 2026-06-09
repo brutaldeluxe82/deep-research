@@ -92,7 +92,6 @@ src/
 ├── research/
 │   ├── engine.ts       # Research engine (parallel search, evidence tracking, outlines)
 │   ├── strategies.ts   # Research strategy templates
-│   └── strategies.ts  # Research strategy templates
 ├── report/
 │   └── html.ts         # HTML report generator with dark/light mode
 └── search/

@@ -90,7 +90,7 @@ class ProviderRegistry {
 
 			try {
 				const result = await extractor.extract(url, opts);
-				if (result.content.length > 0) return result;
+				if (result && result.content.length > 0) return result;
 			} catch {
 				// Extractor failed — try next
 			}

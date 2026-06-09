@@ -7,7 +7,7 @@
  * 
  * - Uses only node:fetch (no external deps)
  * - isAvailable() returns true (always available)
- * - extract() catches DNS/network errors and re-throws with context
+ * - extract() catches all errors and returns null (never throws)
  * - Timeout: 15s
  */
 
@@ -81,8 +81,9 @@ export class NativeContentExtractor implements ContentExtractor {
 				wordCount: words.length,
 				truncated,
 			};
-		} catch (err) {
-			throw new Error(`Native extraction failed for ${url}: ${err instanceof Error ? err.message : String(err)}`);
+		} catch {
+			// Never throw — return null so the fallback chain continues
+			return null;
 		}
 	}
 }

@@ -56,7 +56,7 @@ export interface ContentExtractor {
 	readonly name: string;
 	readonly label: string;
 	isAvailable(): boolean;
-	extract(url: string, opts?: { maxTokens?: number; format?: "text" | "markdown" | "html" }): Promise<ExtractResult>;
+	extract(url: string, opts?: { maxTokens?: number; format?: "text" | "markdown" | "html" }): Promise<ExtractResult | null>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

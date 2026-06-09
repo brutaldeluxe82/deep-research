@@ -12,7 +12,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { loadConfig, getConfigPath } from "../src/config.ts";
@@ -76,7 +76,7 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query (or comma-separated for multi-query fan-out)" }),
 			max_results: Type.Optional(Type.Number({ description: "Max total results across all providers (default: 10, max: 20)", default: 10, maximum: 20 })),
-			engine: Type.Optional(Type.String({ description: "Override engine: auto | brave | exa | tavily | duckduckgo" })),
+			engine: Type.Optional(Type.String({ description: "Override engine: auto | brave | exa | tavily | scholar | duckduckgo" })),
 			parallel: Type.Optional(Type.Boolean({ description: "Search multiple providers in parallel (default: true)", default: true })),
 		}),
 
@@ -377,7 +377,7 @@ export default function (pi: ExtensionAPI) {
 			// Map sub-questions to sections
 			for (let i = 0; i < subQuestions.length; i++) {
 				const sq = subQuestions[i];
-				const sectionNum = String.fromCharCode(73 + i); // I, J, K...
+				const sectionNum = i + 2; // Start at 2 (Executive Summary is section 1)
 				text += `## ${sectionNum}. ${sq.question}\n`;
 				text += `   Status: ${sq.status}\n`;
 

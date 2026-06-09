@@ -90,9 +90,9 @@ pi.registerTool({
   parameters: Type.Object({
     query: Type.String({ description: "..." }),
     max_results: Type.Optional(Type.Number({ description: "...", default: 10 })),
-  }) as never,                  // ← 'as never' is required for TypeBox in pi extensions
+  }),  // No `as never` — see Gotcha #6
   async execute(_toolCallId, params) {
-    const query = params.query as string;  // ← 'as string' cast needed (TypeBox + as never)
+    const query = params.query;  // Properly typed — no `as string` cast needed
     return {
       content: [{ type: "text" as const, text: "result" }],
       details: {},
@@ -113,10 +113,6 @@ pi.on("session_shutdown", () => { /* ... */ });
 - `ctx.ui.notify(message, "info" | "warning" | "error")` — **NOT `"success"`**, only info/warning/error
 - `ctx.ui.setStatus(key, value)` — status bar text
 - `ctx.ui.select(title, options)` — interactive picker (we no longer use this in the wizard)
-
-### The `as never` Pattern
-
-All TypeBox parameter schemas must end with `as never`. This is a pi convention — jiti handles the runtime type resolution. Without it, TypeScript complains but it works at runtime.
 
 ---
 
@@ -178,7 +174,16 @@ description: Conduct iterative deep research...
 
 Without `name` and `description` fields, pi won't load the skill.
 
-### 6. `as never` is NOT needed for TypeBox parameters
+### 6. Import TypeBox from `"typebox"`, NOT `"@sinclair/typebox"`
+
+Pi ships its own `typebox` package (v1.x). Import from `"typebox"` to use pi's built-in version — no runtime dependency needed.
+
+```typescript
+import { Type } from "typebox";  // ✅ Uses pi's built-in typebox
+import { Type } from "@sinclair/typebox";  // ❌ Adds a runtime dependency
+```
+
+### 7. `as never` is NOT needed for TypeBox parameters
 
 Previous versions of this project used `}) as never` on parameter schemas, but this is **wrong**. The official pi extension API uses TypeScript generics — `ToolDefinition<TParams>` infers `params` in `execute()` as `Static<TParams>` from TypeBox. When you cast the schema to `never`, you break this inference and get `params: never`, forcing `as string` casts everywhere.
 
@@ -199,14 +204,14 @@ The `as never` pattern was cargo-culted and masks real type errors (like missing
 
 The wizard used to ask users to pick a "preferred" provider, but `parallelSearch()` ignores it entirely — it uses the `searchFallbackChain`. The new wizard shows detected keys + signup URLs instead. Don't re-add this.
 
-### 7. Error messages must be actionable
+### 8. Error messages must be actionable
 
 When search fails:
 - **Zero keys:** show Brave signup URL + `export BRAVE_API_KEY=your_key`
 - **Has keys but failed:** suggest `synthetic_web_search` tool + check config path
 - Never just say "No results found" with no next step.
 
-### 8. TypeBox `Type.Optional(Type.String(...))` needs double closing `))`
+### 9. TypeBox `Type.Optional(Type.String(...))` needs double closing `))`
 
 ```typescript
 // ✅ Correct
