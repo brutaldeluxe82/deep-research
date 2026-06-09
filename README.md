@@ -89,14 +89,22 @@ The skill will automatically trigger and guide the research workflow using the t
 src/
 ├── config.ts           # Config loader with PI_CODING_AGENT_DIR support
 ├── setup-wizard.ts     # First-run provider picker
+├── tools/
+│   ├── search.ts       # deep_search execute handler
+│   ├── extract.ts       # deep_extract execute handler
+│   ├── checkpoint.ts    # research_checkpoint execute handler
+│   ├── outline.ts       # research_outline execute handler
+│   └── report.ts        # research_report execute handler
 ├── research/
-│   ├── engine.ts       # Research engine (parallel search, evidence tracking, outlines)
-│   ├── strategies.ts   # Research strategy templates
+│   ├── round-tracker.ts # Session round counter for checkpoint
+│   └── source-tracker.ts # URL dedup + credibility tagging
 ├── report/
 │   └── html.ts         # HTML report generator with dark/light mode
 └── search/
     ├── types.ts        # SearchProvider + ContentExtractor interfaces
     ├── registry.ts     # Provider registry with fallback chains
+    ├── provider-health.ts # Provider health tracking
+    ├── parallel-search.ts # Multi-provider parallel search
     ├── index.ts        # Provider registration wiring
     └── providers/
         ├── brave.ts    # Brave Search API

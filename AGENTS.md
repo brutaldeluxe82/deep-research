@@ -22,15 +22,21 @@ A [pi](https://github.com/earendil-works/pi-coding-agent) package called `pi-dee
 ```
 index.ts                          ← Re-exports extensions/index.ts
 extensions/
-  index.ts                        ← Main extension: registers 5 tools + lifecycle hooks
-skills/
-  deep-research/SKILL.md         ← LLM-facing skill instructions (YAML frontmatter required)
-src/
+  index.ts                        ← Main extension: lifecycle + tool registration (wiring only)
+  src/tools/
+    search.ts                      ← deep_search execute handler
+    extract.ts                     ← deep_extract execute handler
+    checkpoint.ts                  ← research_checkpoint execute handler
+    outline.ts                     ← research_outline execute handler
+    report.ts                      ← research_report execute handler
+  src/
   config.ts                       ← Config loader: $PI_CODING_AGENT_DIR/deep-research.json
   setup-wizard.ts                 ← First-run wizard: detects API keys, shows signup URLs
   search/
     types.ts                      ← SearchProvider + ContentExtractor interfaces, KNOWN_PROVIDERS
     registry.ts                   ← ProviderRegistry singleton with fallback chains
+    provider-health.ts            ← Provider health tracking (adaptive ranking)
+    parallel-search.ts            ← Multi-provider parallel search with URL dedup
     index.ts                      ← Wires providers to registry on session_start
     providers/
       brave.ts                    ← Brave Search API (BRAVE_API_KEY)
@@ -41,8 +47,8 @@ src/
       firecrawl.ts               ← Content extraction only (FIRECRAWL_API_KEY)
       native-extract.ts          ← Zero-config: fetch + HTML stripping
   research/
-    engine.ts                     ← ResearchEngine, ProviderHealth, SubQuestion/Evidence tracking
-    strategies.ts                 ← 5 research strategy templates (comparison, factcheck, deep_dive, exploratory, temporal)
+    round-tracker.ts               ← Session-scoped round counter for checkpoint
+    source-tracker.ts             ← URL dedup + credibility for extracted sources
   report/
     html.ts                       ← HTML + Markdown report generator
 ```

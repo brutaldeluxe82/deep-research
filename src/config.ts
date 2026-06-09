@@ -144,7 +144,16 @@ function resolveKey(configVal: string | undefined, envVar: string): string {
 // Load + merge
 // ─────────────────────────────────────────────────────────────────────────────
 
+let cachedConfig: DeepResearchConfig | undefined;
+
+/** Reset the cached config (called on session shutdown). */
+export function resetConfigCache(): void {
+	cachedConfig = undefined;
+}
+
 export function loadConfig(): DeepResearchConfig {
+	if (cachedConfig) return cachedConfig;
+
 	const configPath = getConfigPath();
 	const result: DeepResearchConfig = JSON.parse(JSON.stringify(DEFAULTS));
 
@@ -182,6 +191,7 @@ export function loadConfig(): DeepResearchConfig {
 		);
 	}
 
+	cachedConfig = result;
 	return result;
 }
 
