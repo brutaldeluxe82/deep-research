@@ -28,12 +28,12 @@ Conduct structured, iterative deep research using multi-provider parallel search
 
 ## When NOT to Use
 
-- Quick factual lookups (use `synthetic_web_search` or `web_search` instead)
-- Local repo search (use `search`/`grep` instead)
-- Single-page reads (use `web_fetch` instead)
+- Quick factual lookups — a single search is enough
+- Local repo search — use `grep`/`rg` instead
+- Single-page reads — just fetch the URL
 - Simple yes/no questions
 
-**Complementarity:** This skill provides iterative depth. For quick lookups, use simpler tools. Both can coexist — depth when needed, speed when possible.
+Deep research is for questions that need multiple sources, multiple angles, and synthesis into a structured report. If one search answers it, you don't need this skill.
 
 ## Research Depth & Source Targets
 
